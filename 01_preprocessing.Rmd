@@ -8,9 +8,9 @@ output:
 ---
 
 ```{r setup, include = FALSE}
-setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/scripts")
+setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
 
-plotFolder <- "../images/1.preprocessing_EDA/"
+plotFolder <- "../images/01_preprocessing/"
 if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
 
 knitr::opts_chunk$set(

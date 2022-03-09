@@ -8,9 +8,9 @@ output:
 ---
 
 ```{r setup, include = FALSE}
-setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/scripts")
+setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
 
-plotFolder <- "../images/1.preprocessing_EDA/"
+plotFolder <- "../images/02_EDA/"
 if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
 
 knitr::opts_chunk$set(
@@ -121,7 +121,7 @@ grid.arrange(pca_plots[[1]], pca_plots[[2]], pca_plots[[3]], pca_plots[[4]], pca
              ncol=2, nrow=3,
              top = textGrob("Principal Component Analysis \n Colored by epigenetic ages",
                             gp=gpar(fontsize=20,font=3)))
-ggsave("pca_clocks.png")
+ggsave("pca_clocks.png", dpi=1200)
 
 ```
 
@@ -129,7 +129,7 @@ ggsave("pca_clocks.png")
 pca_plots_age <- plot_pca_label(df_complete$Age, "AGE") +
   labs(title = "Principal Component Analysis \n Colored by ages")
 pca_plots_age
-ggsave("pca_plots_age.png")
+ggsave("pca_plots_age.png", dpi=1200)
 ```
 
 # Explore clocks
@@ -141,18 +141,12 @@ ggplot(meltdf, aes(x=as.factor(variable), y=value, fill=Group))+
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x="Age and Clocks", title = "Compare ages and clocks between two groups")
-ggsave("age_clocks_vs_groups.png", width=10, height=3)
+ggsave("age_clocks_vs_groups.png", width=10, height=3, dpi=1200)
 ```
 
 
 ## Correlogram
 ### Between clocks
-
-# ```{r correlation_clocks, fig.height=6, fig.width=6}
-# library(corrplot)
-# corrplot(cor(df[,c("Age", clocks_vars)]),  addCoef.col = 'black', type = 'lower')
-# ```
-
 
 #### All subjects
 ```{r correlogram_clocks, fig.width=10, fig.height=10}
@@ -160,25 +154,23 @@ library(GGally)
 ggpairs(df[,c("Age", clocks_vars)]) +
   labs(title = "Correlogram of all clocks \n All subjects") +
   theme(plot.title = element_text(hjust=0.5, size=24)) 
-ggsave("correlogram_clocks.png")
+ggsave("correlogram_clocks.png", dpi=1200)
 ```
 
 #### Control Group
 ```{r correlogram_clocks_control, fig.width=10, fig.height=10}
-library(GGally)
 ggpairs(df[df$Group=="LCW Clean Ctrl",c("Age", clocks_vars)]) +
   labs(title = "Correlogram of all clocks \n Control Group") +
   theme(plot.title = element_text(hjust=0.5, size=24)) 
-ggsave("correlogram_clocks_control.png")
+ggsave("correlogram_clocks_control.png", dpi=1200)
 ```
 
 #### Treatment Group
 ```{r correlogram_clocks_trt, fig.width=10, fig.height=10}
-library(GGally)
 ggpairs(df[df$Group!="LCW Clean Ctrl",c("Age", clocks_vars)]) +
   labs(title = "Correlogram of all clocks \n Trearment Group") +
   theme(plot.title = element_text(hjust=0.5, size=24)) 
-ggsave("correlogram_clocks_trt.png")
+ggsave("correlogram_clocks_trt.png", dpi=1200)
 ```
 
 
@@ -248,7 +240,7 @@ do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
 ggpairs(df[,c(ambient_exp_vars)]) +
   labs(title = "Correlogram of all Ambient Exposure Measurements") +
   theme(plot.title = element_text(hjust=0.5, size=24))
-ggsave("correlogram_ambient.png")
+ggsave("correlogram_ambient.png", dpi=1200)
 ```
 
 ```{r correlation_ambient, fig.height=8, fig.width=8}
@@ -262,7 +254,7 @@ library(GGally)
 ggpairs(df[,c(urinary_exp_vars)]) +
   labs(title = "Correlogram of all Urinary Exposure Measurements") +
   theme(plot.title = element_text(hjust=0.5, size=24))
-ggsave("correlogram_urinary.png")
+ggsave("correlogram_urinary.png", dpi=1200)
 ```
 
 ```{r correlation_urinary, fig.height=6, fig.width=6}
@@ -275,7 +267,7 @@ library(GGally)
 ggpairs(df[,c(ambient_exp_vars, urinary_exp_vars)]) +
   labs(title = "Correlogram of all Ambient and Urinary Exposure Measurements") +
   theme(plot.title = element_text(hjust=0.5, size=24))
-# ggsave("correlogram_ambient_urinary.png")
+# ggsave("correlogram_ambient_urinary.png", dpi=1200)
 ```
 
 ```{r correlation_ambient_urinary, fig.height=12, fig.width=12}
@@ -302,7 +294,7 @@ df[,c("SID", clocks_vars, urinary_exp_vars)] %>%
        y = "Epigenetic Age",
        x = "Urinary Measurements") +
   theme(plot.title=element_text(hjust=0.5, size=24))
-ggsave("clock_urine_exps.png")
+ggsave("clock_urine_exps.png", dpi=1200)
 ```
 
 ```{r clock_air_exps, fig.width=16, fig.height=6}
@@ -320,7 +312,7 @@ df[,c("SID", clocks_vars, ambient_exp_vars)] %>%
        y = "Epigenetic Age",
        x = "Ambient Exposure Measurements") +
   theme(plot.title=element_text(hjust=0.5, size=24))
-ggsave("clock_air_exps.png")
+ggsave("clock_air_exps.png", dpi=1200)
 ```
 
 
@@ -339,7 +331,7 @@ df[,c("SID", clocks_vars, ambient_exp_vars[1:7])] %>%
        y = "Epigenetic Age",
        x = "Ambient Exposure Measurements") +
   theme(plot.title=element_text(hjust=0.5, size=24))
-ggsave("clock_air_exps_1.png")
+ggsave("clock_air_exps_1.png", dpi=1200)
 ```
 
 
@@ -358,6 +350,6 @@ df[,c("SID", clocks_vars, ambient_exp_vars[8:15])] %>%
        y = "Epigenetic Age",
        x = "Ambient Exposure Measurements") +
   theme(plot.title=element_text(hjust=0.5, size=24))
-ggsave("clock_air_exps_2.png")
+ggsave("clock_air_exps_2.png", dpi=1200)
 ```
 
