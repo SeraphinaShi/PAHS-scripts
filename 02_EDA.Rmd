@@ -1,0 +1,363 @@
+---
+title: "Exploration"
+author: "Seraphina Shi"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/scripts")
+
+plotFolder <- "../images/1.preprocessing_EDA/"
+if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
+
+knitr::opts_chunk$set(
+  cache=FALSE, autodep=FALSE, warning=FALSE, message=FALSE, echo=FALSE,
+  results = 'markup', dev='png', dpi=150, fig.align = "center", fig.path=plotFolder,
+  cache.path=".cache/",
+  duplicate.label="allow"
+)
+
+```
+
+```{r}
+source('shared_commands.R')
+```
+
+
+# Load Data from the Clock Calculator
+```{r}
+df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
+```
+
+
+# Table with summarize info [table 1]
+## For all observations (including the control group)
+```{r fig.width=6, fig.height=4}
+# cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
+# cat("Number of females:                                       ", sum(df$predictedGender == "female"))
+# summary(df[,c(var_cont)])
+# df[,c(var_cont, var_cat)] %>% tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))
+df %>% select(-unlist(var_name_list$ID)) %>% 
+  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
+                             all_categorical() ~ "{n} / {N} ({p}%)"),
+              missing_text = "(Missing)")
+```
+
+
+## For observations in the treatment group 
+```{r fig.width=6, fig.height=4}
+# cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
+# cat("Number of females:                                       ", sum(df$predictedGender == "female"))
+# summary(df[,c(var_cont)])
+# df[,c(var_cont, var_cat)] %>% tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))
+df[df$Group =="LEX",] %>%  
+  select(-SID) %>% 
+  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
+                             all_categorical() ~ "{n} / {N} ({p}%)"),
+              missing_text = "(Missing)")
+```
+
+## For observations in the control group 
+```{r fig.width=6, fig.height=4}
+# cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
+# cat("Number of females:                                       ", sum(df$predictedGender == "female"))
+# summary(df[,c(var_cont)])
+# df[,c(var_cont, var_cat)] %>% tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))
+df[df$Group != "LEX",] %>%  
+  select(-SID) %>% 
+  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
+                             all_categorical() ~ "{n} / {N} ({p}%)"),
+              missing_text = "(Missing)")
+```
+
+## Fuel Types Summary table
+Current Fuel vs Birth Fuel + Cumulative
+```{r}
+library(reshape2)
+dcast(df, brthFuel+cumFuel ~ curFuel)
+```
+
+
+# PCA 
+Only the treatment group are used in this PCA exploration.
+```{r pca_clocks, fig.height=10, fig.width=7}
+library(ggfortify) 
+library(tidyr)
+
+df_complete <- df %>% select("Age", clocks_vars, ambient_exp_vars, urinary_exp_vars) %>% drop_na()
+
+plot_pca_label <- function(clock, clock_name){
+  pca <- prcomp(df_complete[,c(ambient_exp_vars, urinary_exp_vars)])
+  pca_data <- as.data.frame(pca$x[,c(1,2)])
+  pca_data$clock <- clock
+
+  library("ggpubr")
+  p_pca <- ggscatter(pca_data, x="PC1", y="PC2",
+                    color = "clock", size = 1.5, alpha=0.5, legend = "right", ggtheme = theme_bw(),
+                    xlab = paste0("Dim 1 (", summary(pca)$importance[2,1], "% )" ),
+                    ylab = paste0("Dim 2 (", summary(pca)$importance[2,2], "% )" )) +
+    labs(title = clock_name) +
+    theme(plot.title = element_text(hjust=0.5))
+
+  return(p_pca)
+}
+
+pca_plots <- vector(mode = "list", length = 6)
+for(i in 1:6){
+  if(i == 6){
+    pca_plots[[i]] <- plot_pca_label(df_complete[,clocks_vars[i]], clock_names[i]) +
+      scale_color_gradient(low="goldenrod1", high="steelblue4")
+  } else {
+    pca_plots[[i]] <- plot_pca_label(df_complete[,clocks_vars[i]], paste(clock_names[i], "Clock")) +
+      scale_color_gradient(limits = c(20,90),
+                           low="goldenrod1", high="steelblue4")
+  }
+
+}
+grid.arrange(pca_plots[[1]], pca_plots[[2]], pca_plots[[3]], pca_plots[[4]], pca_plots[[5]], pca_plots[[6]],
+             ncol=2, nrow=3,
+             top = textGrob("Principal Component Analysis \n Colored by epigenetic ages",
+                            gp=gpar(fontsize=20,font=3)))
+ggsave("pca_clocks.png")
+
+```
+
+```{r pca_age, fig.height=4, fig.width=5}
+pca_plots_age <- plot_pca_label(df_complete$Age, "AGE") +
+  labs(title = "Principal Component Analysis \n Colored by ages")
+pca_plots_age
+ggsave("pca_plots_age.png")
+```
+
+# Explore clocks
+## Clock values
+```{r clocks_vs_groups, fig.height=3, fig.width=8}
+meltdf <- melt(data = df %>% select(c("SID", "Group", "Age", clocks_vars[-6])), id.vars = c("SID", "Group"))
+ggplot(meltdf, aes(x=as.factor(variable), y=value, fill=Group))+
+  geom_boxplot(position = position_dodge(width = 1)) +  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x="Age and Clocks", title = "Compare ages and clocks between two groups")
+ggsave("age_clocks_vs_groups.png", width=10, height=3)
+```
+
+
+## Correlogram
+### Between clocks
+
+# ```{r correlation_clocks, fig.height=6, fig.width=6}
+# library(corrplot)
+# corrplot(cor(df[,c("Age", clocks_vars)]),  addCoef.col = 'black', type = 'lower')
+# ```
+
+
+#### All subjects
+```{r correlogram_clocks, fig.width=10, fig.height=10}
+library(GGally)
+ggpairs(df[,c("Age", clocks_vars)]) +
+  labs(title = "Correlogram of all clocks \n All subjects") +
+  theme(plot.title = element_text(hjust=0.5, size=24)) 
+ggsave("correlogram_clocks.png")
+```
+
+#### Control Group
+```{r correlogram_clocks_control, fig.width=10, fig.height=10}
+library(GGally)
+ggpairs(df[df$Group=="LCW Clean Ctrl",c("Age", clocks_vars)]) +
+  labs(title = "Correlogram of all clocks \n Control Group") +
+  theme(plot.title = element_text(hjust=0.5, size=24)) 
+ggsave("correlogram_clocks_control.png")
+```
+
+#### Treatment Group
+```{r correlogram_clocks_trt, fig.width=10, fig.height=10}
+library(GGally)
+ggpairs(df[df$Group!="LCW Clean Ctrl",c("Age", clocks_vars)]) +
+  labs(title = "Correlogram of all clocks \n Trearment Group") +
+  theme(plot.title = element_text(hjust=0.5, size=24)) 
+ggsave("correlogram_clocks_trt.png")
+```
+
+
+
+## Median absolute error
+```{r}
+median_absolute_error <- function(clock_var){
+  return( median(abs(df[,clock_var] - df$Age)))
+}
+
+MAE <- sapply(clocks_vars[1:5], median_absolute_error)
+MAE
+```
+
+
+## Scatterplots of age vs each epigenetic age
+### All subjects
+```{r plots_clocks_vs_age, fig.width=9, fig.height=6}
+age_vs_clock <- function(df_group, clock, clock_name) {
+  if(is.na(df_group)){
+    df_tmp <- df
+  } else {
+    df_tmp <- df[df$Group == df_group,]
+  }
+  cor_test <- cor.test(df_tmp$Age, df_tmp[,clock])
+  r_pearson <- paste0("r=", round(cor_test$estimate, 2))
+  p_val <- ifelse(cor_test$p.value<0.0001, "P<0.0001", 
+                  ifelse(cor_test$p.value<0.001, "P<0.001", 
+                         ifelse(cor_test$p.value<0.01, "P<0.01", 
+                                paste0("P=", round(cor_test$p.value, 2)))))
+  MAE <- paste0("MAE=", round(median_absolute_error(clock),2))
+  ttl <- ifelse(clock == "DNAmTL", paste0("[", LETTERS[which(clocks_vars == clock)], "]: ",r_pearson, ", ", p_val),
+                  paste0("[", LETTERS[which(clocks_vars == clock)], "]: ",r_pearson, ", ", p_val, ", ", MAE, " (years)"))
+  pi <- ggplot(df_tmp, aes_string(x="Age", y=clock)) +
+    geom_point() + 
+    labs(y=clock_name, x="Chronological Age (years)",
+         title = ttl) +
+    geom_smooth(method = lm, se=T, col = "black") +
+    theme(plot.title = element_text(size=10))
+  return(pi)
+}
+
+plots_clocks_vs_age <- mapply(age_vs_clock, rep(NA, 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
+```
+
+### Control Group
+```{r plots_clocks_vs_age_ctrol, fig.width=9, fig.height=6}
+plots_clocks_vs_age <- mapply(age_vs_clock, rep("LCW Clean Ctrl", 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
+```
+
+
+### Treatment Group
+```{r plots_clocks_vs_age_trt, fig.width=9, fig.height=6}
+plots_clocks_vs_age <- mapply(age_vs_clock, rep("LEX", 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
+```
+
+
+
+# Explore Exposure Measurements
+## Correlogram
+
+### Between Ambient Exposure Measurements
+```{r correlogram_ambient, fig.width=12, fig.height=12}
+ggpairs(df[,c(ambient_exp_vars)]) +
+  labs(title = "Correlogram of all Ambient Exposure Measurements") +
+  theme(plot.title = element_text(hjust=0.5, size=24))
+ggsave("correlogram_ambient.png")
+```
+
+```{r correlation_ambient, fig.height=8, fig.width=8}
+library(corrplot)
+corrplot(cor( na.omit(df[,c(ambient_exp_vars)]) ),  addCoef.col = 'black', type = 'lower')
+```
+
+### Between Urinary Exposure Measurements
+```{r correlogram_urinary, fig.width=10, fig.height=10}
+library(GGally)
+ggpairs(df[,c(urinary_exp_vars)]) +
+  labs(title = "Correlogram of all Urinary Exposure Measurements") +
+  theme(plot.title = element_text(hjust=0.5, size=24))
+ggsave("correlogram_urinary.png")
+```
+
+```{r correlation_urinary, fig.height=6, fig.width=6}
+corrplot(cor( na.omit(df[,c(urinary_exp_vars)]) ),  addCoef.col = 'black', type = 'lower')
+```
+
+### Between Ambient and Urinary Exposure Measurements
+```{r correlogram_ambient_urinary, fig.width=20, fig.height=20}
+library(GGally)
+ggpairs(df[,c(ambient_exp_vars, urinary_exp_vars)]) +
+  labs(title = "Correlogram of all Ambient and Urinary Exposure Measurements") +
+  theme(plot.title = element_text(hjust=0.5, size=24))
+# ggsave("correlogram_ambient_urinary.png")
+```
+
+```{r correlation_ambient_urinary, fig.height=12, fig.width=12}
+corrplot(cor( na.omit(df[,c(ambient_exp_vars, urinary_exp_vars)]) ),  addCoef.col = 'black', type = 'lower')
+```
+
+
+
+
+# Clocks vs Measurements
+## Pairplots
+```{r clock_urine, exps, fig.width=12, fig.height=8}
+df[,c("SID", clocks_vars, urinary_exp_vars)] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(ambient_exp, measurements, Benzanthracene_Chrysene_urine:Pyrene_urine) %>% 
+  mutate(measurements = log(measurements),
+         ambient_exp = str_replace(ambient_exp, '_urine', ''),
+         clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ ambient_exp, scales="free") +
+  labs(title="Epigenetic Age vs (log transformed) Urinary Measurements", 
+       y = "Epigenetic Age",
+       x = "Urinary Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=24))
+ggsave("clock_urine_exps.png")
+```
+
+```{r clock_air_exps, fig.width=16, fig.height=6}
+df[,c("SID", clocks_vars, ambient_exp_vars)] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(ambient_exp, measurements, bap_air:PYR_air) %>%
+  mutate(measurements = log(measurements),
+         ambient_exp = str_replace(ambient_exp, '_air', ''),
+         clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ ambient_exp, scales="free") +
+  labs(title="Epigenetic Age vs (log transformed) Ambient Exposure", 
+       y = "Epigenetic Age",
+       x = "Ambient Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=24))
+ggsave("clock_air_exps.png")
+```
+
+
+```{r clock_air_exps_1, fig.width=12, fig.height=8}
+df[,c("SID", clocks_vars, ambient_exp_vars[1:7])] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(ambient_exp, measurements, bap_air:BkF_air) %>%
+  mutate(measurements = log(measurements),
+         ambient_exp = str_replace(ambient_exp, '_air', ''),
+         clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ ambient_exp, scales="free") +
+  labs(title="Epigenetic Age vs (log transformed) Ambient Exposure", 
+       y = "Epigenetic Age",
+       x = "Ambient Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=24))
+ggsave("clock_air_exps_1.png")
+```
+
+
+```{r clock_air_exps_2, fig.width=12, fig.height=8}
+df[,c("SID", clocks_vars, ambient_exp_vars[8:15])] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(ambient_exp, measurements, CHR_air:PYR_air) %>%
+  mutate(measurements = log(measurements),
+         ambient_exp = str_replace(ambient_exp, '_air', ''),
+         clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ ambient_exp, scales="free") +
+  labs(title="Epigenetic Age vs (log transformed) Ambient Exposure", 
+       y = "Epigenetic Age",
+       x = "Ambient Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=24))
+ggsave("clock_air_exps_2.png")
+```
+
