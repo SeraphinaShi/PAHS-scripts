@@ -40,6 +40,13 @@ table(df$curFuel)
 Investigate the association with current (self-reported) fuel type in the LEX study participants, adjusting for known confounders and stove ventilation. The reference group for this analysis would be the smoky coal users. This would be a categorical analysis, and the results would be a p-value from the likelihood ratio (LR) test of a confounder-only model to a model including the exposure variables, as well as p-values for the contrast of each category of coal use (smokeless coal or plant/wood) to that of smoky coal. FDR correction should be used separately for each of these sets. The main interest would be in the coal-specific findings and perhaps less so in the results from the LR test. 
 
 ### Likelihood ratio (LR) test
+Full model: $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove + \epsilon$$
+Nested model: $$Y = \beta_0 + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model. \\
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+Results: 
+
 ```{r}
 library(lmtest)
 preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
@@ -72,10 +79,10 @@ print(p_vals_mat)
 ```
 
 ### Linear regression 
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove$$
-where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
+In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove + \epsilon$$
+where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type.
 
-The estimations of $\beta_0$, $\beta_1$ and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the smoky fuel type to the given fuel type, while holding other variables constant".
+The estimations of $\beta_0$, $\beta_1$ and $\beta_2$ with given $Y$ are shown below. The $\beta_1$ and $\beta_2$ can be interpreted as "the expected change of Y if switching form the smoky fuel type to the given fuel type, while holding other variables constant".
 
 
 ```{r}
@@ -138,7 +145,7 @@ make_forest_plot <- function(df, exposure){
 
 ```
 
-```{r linear_relation_curFuel_mix, fig.width=10, fig.height=3}
+```{r linear_relation_curFuel_mix, fig.width=8, fig.height=2}
 fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
 fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 7))
 fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 7))
@@ -260,7 +267,9 @@ rownames(curFuel_slope) = EAAs_vars
 
 curFuel_slope$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
-make_forest_plot(fueltype_smoky_mean, "Slope of current (self-reported) fuel type ") + 
+print(curFuel_slope)
+
+make_forest_plot(curFuel_slope, "Slope of current (self-reported) fuel type ") + 
   theme(plot.title = element_text(size=14, hjust = 0.5),
           axis.title.y = element_blank(),
           panel.grid.major.x = element_blank(),
@@ -300,21 +309,20 @@ print(p_vals_mat)
 ```
 
 
-#===============================
 ### Linear regression 
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove$$
-where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
+In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Mix}) + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \beta_6 * curStove$$
+where $Y$ is one of the epigenetic age accelerations and the reference as the smoky fuel type.
 
-The estimations of $\beta_0$, $\beta_1$ and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the smoky fuel type to the given fuel type, while holding other variables constant".
+The estimations of $\beta_0$ and $\beta_1$ with given $Y$ are shown below. The $\beta_1$ can be interpreted as "the expected change of Y if switching form the smoky fuel type to the mix fuel type, while holding other variables constant".
 
 
 ```{r}
-preform_regression_curFuel_mix <- function(Y) {
-  X = "curFuel"
+preform_regression_cumFuel_mix <- function(Y) {
+  X = "cumFuel"
   tmp <- df[!is.na(df[,X]),]
   
   tmp <- tmp[tmp$Group == "LEX", ]
-  tmp$curFuel = factor(tmp$curFuel, levels = c("Smoky","Smokeles","Wood_and_or_Plant"))
+  tmp$cumFuel = factor(tmp$cumFuel, levels = c("Smoky","Mix"))
   
   form <- as.formula(paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
   lmfit <- lm(form, data = tmp)
@@ -333,107 +341,52 @@ preform_regression_curFuel_mix <- function(Y) {
     select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
   
   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smoky (reference)"
-  rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles"
-  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"
+  rownames(coefs)[rownames(coefs) == "cumFuelMix"] = "Mix"
 
   return(coefs)
 }
 ```
 
-```{r}
-sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
 
-make_forest_plot <- function(df, exposure){
-  df$p_val <- as.factor(df$p_val)
-  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
-    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
-    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
-    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
-    # ylim(c(-2,2)) +  # not working
-    coord_flip() +  # flip coordinates (puts labels on y axis)
-    labs(x=expression(log[2]-PFAS))+
-    labs(y="Change in year") +
-    ggtitle(exposure)+
-    theme(plot.title = element_text(size=8.6, hjust = 0.5),
-          axis.title.y = element_blank(),
-          panel.grid.major.x = element_blank(),
-          axis.text.y = element_text(size=8),
-          axis.title.x = element_text(size=8),
-          axis.text = element_text(size=7)) +
-    scale_color_manual(values = sig_color) +
-    scale_fill_manual(values = sig_color)
-
-  return(p)
-}
-
-```
-
-```{r linear_relation_curFuel_mix, fig.width=10, fig.height=3}
+```{r linear_relation_cumFuel_mix, fig.width=7, fig.height=3}
 fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
-fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 7))
-fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_mix_mean <- data.frame(matrix(NA, ncol = 7))
 
 for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_curFuel_mix(EAAs_vars[i])
+    rlts = preform_regression_cumFuel_mix(EAAs_vars[i])
     fueltype_smoky_mean[i,] <- rlts[1,]
-    fueltype_smokeless_mean[i,] <- rlts[2,]
-    fueltype_woodplant_mean[i,] <- rlts[3,]
+    fueltype_mix_mean[i,] <- rlts[2,]
 }
 
 colnames(fueltype_smoky_mean) = colnames(rlts)
-colnames(fueltype_smokeless_mean) = colnames(rlts)
-colnames(fueltype_woodplant_mean) = colnames(rlts)
+colnames(fueltype_mix_mean) = colnames(rlts)
 
 rownames(fueltype_smoky_mean) = EAAs_vars
-rownames(fueltype_smokeless_mean) = EAAs_vars
-rownames(fueltype_woodplant_mean) = EAAs_vars
+rownames(fueltype_mix_mean) = EAAs_vars
 
 fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
 p1 <- make_forest_plot(fueltype_smoky_mean, "Smoky (reference)")
-p2 <- make_forest_plot(fueltype_smokeless_mean, "Smokeless")
-p3 <- make_forest_plot(fueltype_woodplant_mean, "Wood_and_or_Plant")
+p2 <- make_forest_plot(fueltype_mix_mean, "Smokeless")
 
-plot_list <- list(p1, p2, p3)
+plot_list <- list(p1, p2)
 
 
-for(j in 1:3){
+for(j in 1:2){
   plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 10))
 }
-grid.arrange(grobs = plot_list,  ncol = 3,
-             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smoky Coal"), gp=gpar(fontsize=15, fontface = 'bold')))
-
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each cumulative Fuel Type\n compared to Smoky Coal"), gp=gpar(fontsize=15, fontface = 'bold')))
 ```
 
 
 ## Sensitivity analyses
 ### Single model
-Limit the analyses in the primary analysis to include only a single observation from each subject (no need for a mixed model). The rationale for this is that it is not so easy to obtain unbiased p-values from a mixed model for FDR testing. This can be remediated during FDR testing but would be good to check.
-
-```{r}
-preform_lmtest_simple <- function(Y, X, log_trans_X = F) {
-  tmp <- df[!is.na(df[,X]),]
-  if(log_trans_X) {
-    tmp[,X] <- log(tmp[,X])
-  }
-  
-  form_full <- as.formula(paste0(Y," ~ ", X))
-  lmfit_full <- lm(form_full, data = tmp)
-  form_reduced <- as.formula(paste0(Y," ~ 1"))
-  lmfit_reduced <- lm(form_reduced, data = tmp)
-  
-  lrtest <- lrtest(lmfit_full, lmfit_reduced)
-
-  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
-}
-```
-
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
-    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], X = "curFuel")
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], X = "cumFuel")
 }
 p_vals_BHadj <- p.adjust(p_vals, method = "BH")
 p_vals_mat <- cbind(p_vals, p_vals_BHadj)
@@ -443,17 +396,16 @@ print(p_vals_mat)
 ```
 
 ### Linear relation
-Use a trend test to estimate a linear relation across use categories (0=gas/electricity, 1=wood, 2=smokeless coal, 3=smoky coal). 
+Use a trend test to estimate a linear relation across use categories (0=gas/electricity, 1=mix, 2=Smoky coal). 
 ```{r}
-preform_regression_curFuel_simple <- function(Y) {
-  X = "curFuel"
+preform_regression_cumFuel_simple <- function(Y) {
+  X = "cumFuel"
   tmp <- df[!is.na(df[,X]),]
   
   tmp <- tmp[tmp$Group == "LEX", ]
 
-  tmp$curFuel[tmp$curFuel == "Wood_and_or_Plant"] = 1
-  tmp$curFuel[tmp$curFuel == "Smokeles"] = 2
-  tmp$curFuel[tmp$curFuel == "Smoky"] = 3
+  tmp$cumFuel[tmp$cumFuel == "Mix"] = 1
+  tmp$cumFuel[tmp$cumFuel == "Smoky"] = 2
   tmp$curFuel <- as.numeric(tmp$curFuel)
 
   form <- as.formula(paste0(Y," ~ ", X))
@@ -476,28 +428,30 @@ preform_regression_curFuel_simple <- function(Y) {
 }
 ```
 
-```{r linear_relation_curFuel_simple, fig.width=4, fig.height=3}
-curFuel_slope <- data.frame(matrix(NA, ncol = 7))
+```{r linear_relation_cumFuel_simple, fig.width=4, fig.height=3}
+cumFuel_slope <- data.frame(matrix(NA, ncol = 7))
 
 for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_curFuel_simple(EAAs_vars[i])
-    curFuel_slope[i,] <- rlts[2,]
+    rlts = preform_regression_cumFuel_simple(EAAs_vars[i])
+    cumFuel_slope[i,] <- rlts[2,]
 }
 
-colnames(curFuel_slope) = colnames(rlts)
+colnames(cumFuel_slope) = colnames(rlts)
 
-rownames(curFuel_slope) = EAAs_vars
+rownames(cumFuel_slope) = EAAs_vars
 
-curFuel_slope$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+cumFuel_slope$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
-make_forest_plot(fueltype_smoky_mean, "Slope of current (self-reported) fuel type ") + 
+print(cumFuel_slope)
+
+make_forest_plot(cumFuel_slope, "Slope of cumulative (self-reported) fuel type ") + 
   theme(plot.title = element_text(size=14, hjust = 0.5),
           axis.title.y = element_blank(),
           panel.grid.major.x = element_blank(),
           axis.text.y = element_text(size=10),
           axis.title.x = element_text(size=10),
           axis.text = element_text(size=7))
-ggsave("linear_relation_curFuel_simple.png", dpi=1200)
+ggsave("linear_relation_cumFuel_simple.png", dpi=1200)
 
 ```
 
@@ -507,521 +461,249 @@ ggsave("linear_relation_curFuel_simple.png", dpi=1200)
 
 
 
-# Linear regression
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 *X$$
-where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements or the urinary measurements. 
+<!-- # Linear regression -->
+<!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 *X$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements or the urinary measurements.  -->
 
-The estimations of $\beta_1$ with given $Y$ and $X$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in X while holding other variables constant".
+<!-- The estimations of $\beta_1$ with given $Y$ and $X$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in X while holding other variables constant". -->
 
-## Ambient Exposure
-```{r}
-preform_regression <- function(Y, X, log_trans_X = F) {
-  tmp <- df[!is.na(df[,X]),]
-  if(log_trans_X) {
-    tmp[,X] <- log(tmp[,X])
-  }
-  form <- as.formula(paste0(Y,"~",X))
-  lmfit <- lm(form, data = tmp)
-  coef <- round(summary(lmfit)$coefficients[2,1],4)
-  coef_text <- as.character(coef)
-  std <- round(summary(lmfit)$coefficients[2,2],4)
-  std_text <- as.character(std)
-  sig_star <- ifelse(summary(lmfit)$coefficients[2,4]<0.001, "***",
-                ifelse(summary(lmfit)$coefficients[2,4]<0.01, "** ",
-                       ifelse(summary(lmfit)$coefficients[2,4]<0.05, "*  ", "   ")))
-  sig <- ifelse(summary(lmfit)$coefficients[2,4] <= 0.001, "<= 0.001",
-                ifelse(summary(lmfit)$coefficients[2,4] <= 0.01, "<= 0.01",
-                       ifelse(summary(lmfit)$coefficients[2,4] <= 0.05, "<= 0.05", "> 0.05")))
-  rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""), 
-                sig_star,
-                "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
-  cl_l <- coef - 1.96 * std
-  cl_u <- coef + 1.96 * std
-  return(c(rlt, coef, cl_l, cl_u, sig))
-}
-
-
-
-
-options(scipen = 999)
-```
-
-```{r linear_reg_coef_ambient, fig.width=10, fig.height=16}
-lm_coef_ambient <- data.frame()
-lm_coef_ambient_plots <- list()
-
-for(j in 1:length(ambient_exp_vars)){
-  plot_df <- data.frame(matrix(NA, ncol = 4))
-  for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression(Y = EAAs_vars[i], X = ambient_exp_vars[j])
-    lm_coef_ambient[i,j] <- rlts[1]
-    plot_df[i,] <- rlts[c(2,3,4,5)]
-  }
-  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
-  rownames(plot_df) <- EAAs_vars
-  plot_df$EAAs <- EAAs_names
-  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-  
-  plot_df$coefficient = as.numeric(plot_df$coefficient)
-  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
-  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
-  
-  pj <- make_forest_plot(plot_df, ambient_exp_label[j])
-  lm_coef_ambient_plots[[j]] = pj 
-}
-
-
-lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
-colnames(lm_coef_ambient) <- ambient_exp_names
-rownames(lm_coef_ambient) <- c(EAAs_names, "")
-
-
-grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
-             top = textGrob(paste("Ambient Exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-for(j in 1:length(ambient_exp_vars)){
-  lm_coef_ambient_plots[[j]] <- lm_coef_ambient_plots[[j]] + ylim(c(-0.055, 0.055))
-}
-grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
-             top = textGrob(paste("Ambient Exposures (same range)"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-cat("X: Ambient Exposure Measurements:")
-print(lm_coef_ambient)
-```
-
-```{r}
-write.csv(lm_coef_ambient, "../data/2.analysis/lm_coefficients_ambient.csv")
-```
-
-## Urinary Measurements
-```{r linear_reg_coef_urine, fig.width=10, fig.height=9}
-lm_coef_urine <- data.frame()
-lm_coef_urine_plots <- list()
-
-for(j in 1:length(urinary_exp_vars)){
-  plot_df <- data.frame(matrix(NA, ncol = 4))
-  for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression(Y = EAAs_vars[i], X = urinary_exp_vars[j])
-    lm_coef_urine[i,j] <- rlts[1]
-    plot_df[i,] <- rlts[c(2,3,4,5)]
-  }
-  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
-  rownames(plot_df) <- EAAs_vars
-  plot_df$EAAs <- EAAs_names
-  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-  
-  plot_df$coefficient = as.numeric(plot_df$coefficient)
-  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
-  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
-  
-  pj <- make_forest_plot(plot_df, urinary_exp_label[j])
-  lm_coef_urine_plots[[j]] = pj
-}
-
-
-lm_coef_urine[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
-colnames(lm_coef_urine) <- urinary_exp_names
-rownames(lm_coef_urine) <- c(EAAs_names, "")
-
-
-grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
-             top = textGrob(paste("Urinary Measurements"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-for(j in 1:length(urinary_exp_vars)){
-  lm_coef_urine_plots[[j]] <- lm_coef_urine_plots[[j]] + ylim(c(-1.5, 3))
-}
-grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
-             top = textGrob(paste("Urinary Measurements (same range)"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-cat("X: Urinary Measurements:")
-print(lm_coef_urine)
-
-```
-
-
-```{r}
-write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv")
-```
-
-
-## Current fuel type
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Smoky}) + \beta_3 * I(\text{Wood_and_or_Plant})$$
-where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
-
-The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant".
-
-The numbers of observations with each current fuel type:
-```{r}
-table(df$curFuel)
-```
-
-```{r}
-preform_regression_curFuel <- function(Y) {
-  X = "curFuel"
-  tmp <- df[!is.na(df[,X]),]
-  
-  tmp <- tmp[tmp$Group == "LEX", ]
-  # tmp$fueltype = factor(tmp$fueltype, levels = c("Gas/Elect","Smokeles","Smoky","Wood_and_or_Plant"))
-  tmp$fueltype = factor(tmp$fueltype, levels = c("Smoky","Smokeles","Wood_and_or_Plant"))
-  
-  form <- as.formula(paste0(Y,"~",X, "+", "curStove + county + BMI + ses + edu"))
-  lmfit <- lm(form, data = tmp)
-
-  coefs <- as.data.frame(summary(lmfit)$coefficients)
-  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
-
-  coefs <- coefs %>%
-    select(coefficient, std, pval) %>%
-    mutate(cl_lower = coefficient - 1.96 * std,
-           cl_upper = coefficient + 1.96 * std,
-           p_val = ifelse(pval <= 0.001, "<= 0.001",
-                        ifelse(pval <= 0.01, "<= 0.01",
-                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05"))))
-  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect"
-  rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles"
-  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
-  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"
-
-  return(coefs)
-}
-```
-
-```{r linear_regression_fueltype_mean, fig.width=7, fig.height=5}
-fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6))
-
-for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_curFuel(EAAs_vars[i])
-    fueltype_gas_mean[i,] <- rlts[1,]
-    fueltype_smokeless_mean[i,] <- rlts[2,]
-    fueltype_smoky_mean[i,] <- rlts[3,]
-    fueltype_woodplant_mean[i,] <- rlts[4,]
-}
-
-colnames(fueltype_gas_mean) = colnames(rlts)
-colnames(fueltype_smokeless_mean) = colnames(rlts)
-colnames(fueltype_smoky_mean) = colnames(rlts)
-colnames(fueltype_woodplant_mean) = colnames(rlts)
-
-rownames(fueltype_gas_mean) = EAAs_vars
-rownames(fueltype_smokeless_mean) = EAAs_vars
-rownames(fueltype_smoky_mean) = EAAs_vars
-rownames(fueltype_woodplant_mean) = EAAs_vars
-
-fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-
-p1 <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)")
-p2 <- make_forest_plot(fueltype_smokeless_mean, "Smokeless")
-p3 <- make_forest_plot(fueltype_smoky_mean, "Smoky")
-p4 <- make_forest_plot(fueltype_woodplant_mean, "Wood_and_or_Plant")
-
-plot_list <- list(p1, p2, p3, p4)
-
-
-for(j in 1:4){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12))
-}
-grid.arrange(grobs = plot_list,  ncol = 2,
-             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Gas/Electricity"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-```
-
-## Childhood Exposure: Birth Fuel Type 
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(Smokeles) + \beta_2 * I(Smoky) + \beta_3 * I(Wood) + \beta_4 * I(Mix)$$
-where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
-
-The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant".
-
-
-The numbers of observations with each current fuel type:
-```{r}
-table(df$brthFuel)
-```
-
-```{r}
-preform_regression_brthFuel <- function(Y) {
-  X = "brthFuel"
-  tmp <- df[!is.na(df[,X]),]
-  
-  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Gas/Elect", "Smokeles","Smoky","Wood","Mix"))
-  
-  form <- as.formula(paste0(Y,"~",X))
-  lmfit <- lm(form, data = tmp)
-
-  coefs <- as.data.frame(summary(lmfit)$coefficients)
-  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
-
-  coefs <- coefs %>%
-    select(coefficient, std, pval) %>%
-    mutate(cl_lower = coefficient - 1.96 * std,
-           cl_upper = coefficient + 1.96 * std,
-           p_val = ifelse(pval <= 0.001, "<= 0.001",
-                        ifelse(pval <= 0.01, "<= 0.01",
-                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05"))))
-  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect"
-  rownames(coefs)[rownames(coefs) == "brthFuelSmokeles"] = "Smokeles"
-  rownames(coefs)[rownames(coefs) == "brthFuelSmoky"] = "Smoky"
-  rownames(coefs)[rownames(coefs) == "brthFuelWood"] = "Wood"
-  rownames(coefs)[rownames(coefs) == "brthFuelMix"] = "Mix"
-
-  return(coefs)
-}
-```
-
-```{r linear_regression_birth_fueltype_mean, fig.width=7, fig.height=7.5}
-fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_wood_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6))
-
-for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_brthFuel(EAAs_vars[i])
-    fueltype_gas_mean[i,] <- rlts[1,]
-    fueltype_smokeless_mean[i,] <- rlts[2,]
-    fueltype_smoky_mean[i,] <- rlts[3,]
-    fueltype_wood_mean[i,] <- rlts[4,]
-    fueltype_mix_mean[i,] <- rlts[5,]
-}
-
-colnames(fueltype_gas_mean) = colnames(rlts)
-colnames(fueltype_mix_mean) = colnames(rlts)
-colnames(fueltype_smokeless_mean) = colnames(rlts)
-colnames(fueltype_smoky_mean) = colnames(rlts)
-colnames(fueltype_wood_mean) = colnames(rlts)
-
-rownames(fueltype_gas_mean) = EAAs_vars
-rownames(fueltype_mix_mean) = EAAs_vars
-rownames(fueltype_smokeless_mean) = EAAs_vars
-rownames(fueltype_smoky_mean) = EAAs_vars
-rownames(fueltype_wood_mean) = EAAs_vars
-
-fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_wood_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-
-p_gas <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)")
-p_smokeles <- make_forest_plot(fueltype_smokeless_mean, "Smokeless")
-p_smoky <- make_forest_plot(fueltype_smoky_mean, "Smoky")
-p_wood <- make_forest_plot(fueltype_wood_mean, "Wood")
-p_mix <- make_forest_plot(fueltype_mix_mean, "Mix")
-
-
-plot_list <- list(p_gas, p_smokeles, p_smoky, p_wood, p_mix)
-
-
-for(j in 1:5){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12))
-}
-grid.arrange(grobs = plot_list,  ncol = 2,
-             layout_matrix = rbind(c(1, NA),
-                                   c(2,3),
-                                   c(4,5)),
-             top = textGrob(paste("Average EAA difference of each Birth Fuel Type \ncompared to Gas/Electricity"), gp=gpar(fontsize=13, fontface = 'bold')))
-
-```
-
-## Lifetime Exposure: Cumulative Fuel Type 
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(Smoky) + \beta_2 * I(Mix)$$
-where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
-
-The estimations of $\beta_0$, $\beta_1$, and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant".
-
-
-The numbers of observations with each cumulative fuel type:
-```{r}
-table(df$cumFuel)
-```
-
-
-```{r}
-preform_regression_cumFuel <- function(Y) {
-  X = "cumFuel"
-  tmp <- df[!is.na(df[,X]),]
-  
-  tmp$cumFuel = factor(tmp$cumFuel, levels = c("Gas/Elect", "Smoky", "Mix"))
-  
-  form <- as.formula(paste0(Y,"~",X))
-  lmfit <- lm(form, data = tmp)
-
-  coefs <- as.data.frame(summary(lmfit)$coefficients)
-  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
-
-  coefs <- coefs %>%
-    select(coefficient, std, pval) %>%
-    mutate(cl_lower = coefficient - 1.96 * std,
-           cl_upper = coefficient + 1.96 * std,
-           p_val = ifelse(pval <= 0.001, "<= 0.001",
-                        ifelse(pval <= 0.01, "<= 0.01",
-                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05"))))
-  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect"
-  rownames(coefs)[rownames(coefs) == "cumFuelSmoky"] = "Smoky"
-  rownames(coefs)[rownames(coefs) == "cumFuelMix"] = "Mix"
-
-  return(coefs)
-}
-```
-
-```{r linear_regression_lifetime_fueltype_mean, fig.width=10.5, fig.height=5}
-fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
-fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6))
-
-for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_cumFuel(EAAs_vars[i])
-    fueltype_gas_mean[i,] <- rlts[1,]
-    fueltype_smoky_mean[i,] <- rlts[2,]
-    fueltype_mix_mean[i,] <- rlts[3,]
-}
-
-colnames(fueltype_gas_mean) = colnames(rlts)
-colnames(fueltype_smoky_mean) = colnames(rlts)
-colnames(fueltype_mix_mean) = colnames(rlts)
-
-rownames(fueltype_gas_mean) = EAAs_vars
-rownames(fueltype_mix_mean) = EAAs_vars
-rownames(fueltype_smoky_mean) = EAAs_vars
-
-fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-
-p_gas <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)")
-p_smoky <- make_forest_plot(fueltype_smoky_mean, "Smoky")
-p_mix <- make_forest_plot(fueltype_wood_mean, "Mix")
-
-plot_list <- list(p_gas, p_smoky, p_mix)
-
-
-for(j in 1:3){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12))
-}
-grid.arrange(grobs = plot_list,  ncol = 3,
-             top = textGrob(paste("Average EAA difference of each Lifetime Fuel Type \ncompared to Gas/Electricity"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-```
-
-
-
-## Current Stove Type
-```{r}
-table(df$curStove)
-```
-In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Portable_stove}) + \beta_2 * I(\text{Ventilated}) + \beta_3 * I(\text{Firepit_and_unventilated}) + \beta_4 * I(\text{Mix})$$
-where $Y$ is one of the epigenetic age accelerations and the baseline as the Gas/Elect stove type from the control group.
-
-The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the Gas/Electricity stove type to the given stove type, while holding other variables constant".
-
-```{r}
-preform_regression_curStove <- function(Y) {
-  X = "curStove"
-  tmp <- df[!is.na(df[,X]),]
-  
-  tmp$curStove = factor(tmp$curStove, levels = c("Gas/Elect", "Portable_stove", "Ventilated", "Firepit_and_unventilated", "Mix"))
-  
-  form <- as.formula(paste0(Y,"~",X))
-  lmfit <- lm(form, data = tmp)
-
-  coefs <- as.data.frame(summary(lmfit)$coefficients)
-  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
-
-  coefs <- coefs %>%
-    select(coefficient, std, pval) %>%
-    mutate(cl_lower = coefficient - 1.96 * std,
-           cl_upper = coefficient + 1.96 * std,
-           p_val = ifelse(pval <= 0.001, "<= 0.001",
-                        ifelse(pval <= 0.01, "<= 0.01",
-                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05"))))
-  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect"
-  rownames(coefs)[rownames(coefs) == "curStovePortable_stove"] = "Portable_stove"
-  rownames(coefs)[rownames(coefs) == "curStoveVentilated"] = "Ventilated"
-  rownames(coefs)[rownames(coefs) == "curStoveFirepit_and_unventilated"] = "Firepit_and_unventilated"
-  rownames(coefs)[rownames(coefs) == "curStoveMix"] = "Mix"
-
-  return(coefs)
-}
-```
-
-```{r linear_regression_stovetype_mean, fig.width=7, fig.height=7.5}
-stovetype_gas_mean <- data.frame(matrix(NA, ncol = 6))
-stovetype_port_mean <- data.frame(matrix(NA, ncol = 6))
-stovetype_vent_mean <- data.frame(matrix(NA, ncol = 6))
-stovetype_fire_mean <- data.frame(matrix(NA, ncol = 6))
-stovetype_mix_mean <- data.frame(matrix(NA, ncol = 6))
-
-
-for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression_curStove(EAAs_vars[i])
-    stovetype_gas_mean[i,] <- rlts[1,]
-    stovetype_port_mean[i,] <- rlts[2,]
-    stovetype_vent_mean[i,] <- rlts[3,]
-    stovetype_fire_mean[i,] <- rlts[4,]
-    stovetype_mix_mean[i,] <- rlts[5,]
-}
-
-colnames(stovetype_gas_mean) = colnames(rlts)
-colnames(stovetype_port_mean) = colnames(rlts)
-colnames(stovetype_vent_mean) = colnames(rlts)
-colnames(stovetype_fire_mean) = colnames(rlts)
-colnames(stovetype_mix_mean) = colnames(rlts)
-
-rownames(stovetype_gas_mean) = EAAs_vars
-rownames(stovetype_port_mean) = EAAs_vars
-rownames(stovetype_vent_mean) = EAAs_vars
-rownames(stovetype_fire_mean) = EAAs_vars
-rownames(stovetype_mix_mean) = EAAs_vars
-
-stovetype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-stovetype_port_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-stovetype_vent_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-stovetype_fire_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-stovetype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-
-p1 <- make_forest_plot(stovetype_gas_mean, "Gas/Electricity (reference)")
-p2 <- make_forest_plot(stovetype_port_mean, "Portable_stove")
-p3 <- make_forest_plot(stovetype_vent_mean, "Ventilated")
-p4 <- make_forest_plot(stovetype_fire_mean, "Firepit_and_unventilated")
-p5 <- make_forest_plot(stovetype_mix_mean, "Mix")
-
-plot_list <- list(p1, p2, p3, p4, p5)
-
-# grid.arrange(grobs = plot_list,  ncol = 2,
-#              top = textGrob(paste("Average EAA of each Fuel Type"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-for(j in 1:5){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12))
-}
-grid.arrange(grobs = plot_list,  ncol = 2,
-             layout_matrix = rbind(c(1, NA),
-                                   c(2,3),
-                                   c(4,5)),
-             top = textGrob(paste("Average EAA difference of each Stove Type \ncompared to the control group"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-```
-
-
-
-<!-- ## Stove type -->
-<!-- In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(HS) + \beta_2 * I(LS) + \beta_3 * I(Mix) + \beta_4 * I(PS)$$ -->
-<!-- where $Y$ is one of the epigenetic age accelerations and the baseline as the FP stove type. -->
-
-<!-- The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the FP stove type to the given stove type, while holding other variables constant". -->
-
+<!-- ## Ambient Exposure -->
 <!-- ```{r} -->
-<!-- table(df$stovetype) -->
+<!-- preform_regression <- function(Y, X, log_trans_X = F) { -->
+<!--   tmp <- df[!is.na(df[,X]),] -->
+<!--   if(log_trans_X) { -->
+<!--     tmp[,X] <- log(tmp[,X]) -->
+<!--   } -->
+<!--   form <- as.formula(paste0(Y,"~",X)) -->
+<!--   lmfit <- lm(form, data = tmp) -->
+<!--   coef <- round(summary(lmfit)$coefficients[2,1],4) -->
+<!--   coef_text <- as.character(coef) -->
+<!--   std <- round(summary(lmfit)$coefficients[2,2],4) -->
+<!--   std_text <- as.character(std) -->
+<!--   sig_star <- ifelse(summary(lmfit)$coefficients[2,4]<0.001, "***", -->
+<!--                 ifelse(summary(lmfit)$coefficients[2,4]<0.01, "** ", -->
+<!--                        ifelse(summary(lmfit)$coefficients[2,4]<0.05, "*  ", "   "))) -->
+<!--   sig <- ifelse(summary(lmfit)$coefficients[2,4] <= 0.001, "<= 0.001", -->
+<!--                 ifelse(summary(lmfit)$coefficients[2,4] <= 0.01, "<= 0.01", -->
+<!--                        ifelse(summary(lmfit)$coefficients[2,4] <= 0.05, "<= 0.05", "> 0.05"))) -->
+<!--   rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),  -->
+<!--                 sig_star, -->
+<!--                 "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")") -->
+<!--   cl_l <- coef - 1.96 * std -->
+<!--   cl_u <- coef + 1.96 * std -->
+<!--   return(c(rlt, coef, cl_l, cl_u, sig)) -->
+<!-- } -->
+
+
+
+
+<!-- options(scipen = 999) -->
+<!-- ``` -->
+
+<!-- ```{r linear_reg_coef_ambient, fig.width=10, fig.height=16} -->
+<!-- lm_coef_ambient <- data.frame() -->
+<!-- lm_coef_ambient_plots <- list() -->
+
+<!-- for(j in 1:length(ambient_exp_vars)){ -->
+<!--   plot_df <- data.frame(matrix(NA, ncol = 4)) -->
+<!--   for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression(Y = EAAs_vars[i], X = ambient_exp_vars[j]) -->
+<!--     lm_coef_ambient[i,j] <- rlts[1] -->
+<!--     plot_df[i,] <- rlts[c(2,3,4,5)] -->
+<!--   } -->
+<!--   colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val") -->
+<!--   rownames(plot_df) <- EAAs_vars -->
+<!--   plot_df$EAAs <- EAAs_names -->
+<!--   plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!--   plot_df$coefficient = as.numeric(plot_df$coefficient) -->
+<!--   plot_df$cl_lower = as.numeric(plot_df$cl_lower) -->
+<!--   plot_df$cl_upper = as.numeric(plot_df$cl_upper) -->
+
+<!--   pj <- make_forest_plot(plot_df, ambient_exp_label[j]) -->
+<!--   lm_coef_ambient_plots[[j]] = pj  -->
+<!-- } -->
+
+
+<!-- lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]") -->
+<!-- colnames(lm_coef_ambient) <- ambient_exp_names -->
+<!-- rownames(lm_coef_ambient) <- c(EAAs_names, "") -->
+
+
+<!-- grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Ambient Exposures"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- for(j in 1:length(ambient_exp_vars)){ -->
+<!--   lm_coef_ambient_plots[[j]] <- lm_coef_ambient_plots[[j]] + ylim(c(-0.055, 0.055)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Ambient Exposures (same range)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- cat("X: Ambient Exposure Measurements:") -->
+<!-- print(lm_coef_ambient) -->
 <!-- ``` -->
 
 <!-- ```{r} -->
-<!-- preform_regression_fueltype <- function(Y) { -->
-<!--   X = "stovetype" -->
+<!-- write.csv(lm_coef_ambient, "../data/2.analysis/lm_coefficients_ambient.csv") -->
+<!-- ``` -->
+
+<!-- ## Urinary Measurements -->
+<!-- ```{r linear_reg_coef_urine, fig.width=10, fig.height=9} -->
+<!-- lm_coef_urine <- data.frame() -->
+<!-- lm_coef_urine_plots <- list() -->
+
+<!-- for(j in 1:length(urinary_exp_vars)){ -->
+<!--   plot_df <- data.frame(matrix(NA, ncol = 4)) -->
+<!--   for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression(Y = EAAs_vars[i], X = urinary_exp_vars[j]) -->
+<!--     lm_coef_urine[i,j] <- rlts[1] -->
+<!--     plot_df[i,] <- rlts[c(2,3,4,5)] -->
+<!--   } -->
+<!--   colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val") -->
+<!--   rownames(plot_df) <- EAAs_vars -->
+<!--   plot_df$EAAs <- EAAs_names -->
+<!--   plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!--   plot_df$coefficient = as.numeric(plot_df$coefficient) -->
+<!--   plot_df$cl_lower = as.numeric(plot_df$cl_lower) -->
+<!--   plot_df$cl_upper = as.numeric(plot_df$cl_upper) -->
+
+<!--   pj <- make_forest_plot(plot_df, urinary_exp_label[j]) -->
+<!--   lm_coef_urine_plots[[j]] = pj -->
+<!-- } -->
+
+
+<!-- lm_coef_urine[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]") -->
+<!-- colnames(lm_coef_urine) <- urinary_exp_names -->
+<!-- rownames(lm_coef_urine) <- c(EAAs_names, "") -->
+
+
+<!-- grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Urinary Measurements"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- for(j in 1:length(urinary_exp_vars)){ -->
+<!--   lm_coef_urine_plots[[j]] <- lm_coef_urine_plots[[j]] + ylim(c(-1.5, 3)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Urinary Measurements (same range)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- cat("X: Urinary Measurements:") -->
+<!-- print(lm_coef_urine) -->
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv") -->
+<!-- ``` -->
+
+
+<!-- ## Current fuel type -->
+<!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Smoky}) + \beta_3 * I(\text{Wood_and_or_Plant})$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group. -->
+
+<!-- The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant". -->
+
+<!-- The numbers of observations with each current fuel type: -->
+<!-- ```{r} -->
+<!-- table(df$curFuel) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- preform_regression_curFuel <- function(Y) { -->
+<!--   X = "curFuel" -->
 <!--   tmp <- df[!is.na(df[,X]),] -->
+
+<!--   tmp <- tmp[tmp$Group == "LEX", ] -->
+<!--   # tmp$fueltype = factor(tmp$fueltype, levels = c("Gas/Elect","Smokeles","Smoky","Wood_and_or_Plant")) -->
+<!--   tmp$fueltype = factor(tmp$fueltype, levels = c("Smoky","Smokeles","Wood_and_or_Plant")) -->
+
+<!--   form <- as.formula(paste0(Y,"~",X, "+", "curStove + county + BMI + ses + edu")) -->
+<!--   lmfit <- lm(form, data = tmp) -->
+
+<!--   coefs <- as.data.frame(summary(lmfit)$coefficients) -->
+<!--   colnames(coefs) <- c("coefficient", "std", "t_val", "pval") -->
+
+<!--   coefs <- coefs %>% -->
+<!--     select(coefficient, std, pval) %>% -->
+<!--     mutate(cl_lower = coefficient - 1.96 * std, -->
+<!--            cl_upper = coefficient + 1.96 * std, -->
+<!--            p_val = ifelse(pval <= 0.001, "<= 0.001", -->
+<!--                         ifelse(pval <= 0.01, "<= 0.01", -->
+<!--                                ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) -->
+<!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect" -->
+<!--   rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles" -->
+<!--   rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky" -->
+<!--   rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant" -->
+
+<!--   return(coefs) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- ```{r linear_regression_fueltype_mean, fig.width=7, fig.height=5} -->
+<!-- fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6)) -->
+
+<!-- for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression_curFuel(EAAs_vars[i]) -->
+<!--     fueltype_gas_mean[i,] <- rlts[1,] -->
+<!--     fueltype_smokeless_mean[i,] <- rlts[2,] -->
+<!--     fueltype_smoky_mean[i,] <- rlts[3,] -->
+<!--     fueltype_woodplant_mean[i,] <- rlts[4,] -->
+<!-- } -->
+
+<!-- colnames(fueltype_gas_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_smokeless_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_smoky_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_woodplant_mean) = colnames(rlts) -->
+
+<!-- rownames(fueltype_gas_mean) = EAAs_vars -->
+<!-- rownames(fueltype_smokeless_mean) = EAAs_vars -->
+<!-- rownames(fueltype_smoky_mean) = EAAs_vars -->
+<!-- rownames(fueltype_woodplant_mean) = EAAs_vars -->
+
+<!-- fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!-- p1 <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)") -->
+<!-- p2 <- make_forest_plot(fueltype_smokeless_mean, "Smokeless") -->
+<!-- p3 <- make_forest_plot(fueltype_smoky_mean, "Smoky") -->
+<!-- p4 <- make_forest_plot(fueltype_woodplant_mean, "Wood_and_or_Plant") -->
+
+<!-- plot_list <- list(p1, p2, p3, p4) -->
+
+
+<!-- for(j in 1:4){ -->
+<!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = plot_list,  ncol = 2, -->
+<!--              top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Gas/Electricity"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- ``` -->
+
+<!-- ## Childhood Exposure: Birth Fuel Type  -->
+<!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(Smokeles) + \beta_2 * I(Smoky) + \beta_3 * I(Wood) + \beta_4 * I(Mix)$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group. -->
+
+<!-- The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant". -->
+
+
+<!-- The numbers of observations with each current fuel type: -->
+<!-- ```{r} -->
+<!-- table(df$brthFuel) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- preform_regression_brthFuel <- function(Y) { -->
+<!--   X = "brthFuel" -->
+<!--   tmp <- df[!is.na(df[,X]),] -->
+
+<!--   tmp$brthFuel = factor(tmp$brthFuel, levels = c("Gas/Elect", "Smokeles","Smoky","Wood","Mix")) -->
+
 <!--   form <- as.formula(paste0(Y,"~",X)) -->
 <!--   lmfit <- lm(form, data = tmp) -->
 
@@ -1035,246 +717,518 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 <!--            p_val = ifelse(pval <= 0.001, "<= 0.001", -->
 <!--                         ifelse(pval <= 0.01, "<= 0.01", -->
 <!--                                ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) -->
-<!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "FP" -->
-<!--   rownames(coefs)[rownames(coefs) == "stovetypeHS"] = "HS" -->
-<!--   rownames(coefs)[rownames(coefs) == "stovetypeLS"] = "LS" -->
-<!--   rownames(coefs)[rownames(coefs) == "stovetypeMix"] = "Mix" -->
-<!--   rownames(coefs)[rownames(coefs) == "stovetypePS"] = "PS" -->
+<!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect" -->
+<!--   rownames(coefs)[rownames(coefs) == "brthFuelSmokeles"] = "Smokeles" -->
+<!--   rownames(coefs)[rownames(coefs) == "brthFuelSmoky"] = "Smoky" -->
+<!--   rownames(coefs)[rownames(coefs) == "brthFuelWood"] = "Wood" -->
+<!--   rownames(coefs)[rownames(coefs) == "brthFuelMix"] = "Mix" -->
+
+<!--   return(coefs) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- ```{r linear_regression_birth_fueltype_mean, fig.width=7, fig.height=7.5} -->
+<!-- fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_wood_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6)) -->
+
+<!-- for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression_brthFuel(EAAs_vars[i]) -->
+<!--     fueltype_gas_mean[i,] <- rlts[1,] -->
+<!--     fueltype_smokeless_mean[i,] <- rlts[2,] -->
+<!--     fueltype_smoky_mean[i,] <- rlts[3,] -->
+<!--     fueltype_wood_mean[i,] <- rlts[4,] -->
+<!--     fueltype_mix_mean[i,] <- rlts[5,] -->
+<!-- } -->
+
+<!-- colnames(fueltype_gas_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_mix_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_smokeless_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_smoky_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_wood_mean) = colnames(rlts) -->
+
+<!-- rownames(fueltype_gas_mean) = EAAs_vars -->
+<!-- rownames(fueltype_mix_mean) = EAAs_vars -->
+<!-- rownames(fueltype_smokeless_mean) = EAAs_vars -->
+<!-- rownames(fueltype_smoky_mean) = EAAs_vars -->
+<!-- rownames(fueltype_wood_mean) = EAAs_vars -->
+
+<!-- fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_wood_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!-- p_gas <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)") -->
+<!-- p_smokeles <- make_forest_plot(fueltype_smokeless_mean, "Smokeless") -->
+<!-- p_smoky <- make_forest_plot(fueltype_smoky_mean, "Smoky") -->
+<!-- p_wood <- make_forest_plot(fueltype_wood_mean, "Wood") -->
+<!-- p_mix <- make_forest_plot(fueltype_mix_mean, "Mix") -->
+
+
+<!-- plot_list <- list(p_gas, p_smokeles, p_smoky, p_wood, p_mix) -->
+
+
+<!-- for(j in 1:5){ -->
+<!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = plot_list,  ncol = 2, -->
+<!--              layout_matrix = rbind(c(1, NA), -->
+<!--                                    c(2,3), -->
+<!--                                    c(4,5)), -->
+<!--              top = textGrob(paste("Average EAA difference of each Birth Fuel Type \ncompared to Gas/Electricity"), gp=gpar(fontsize=13, fontface = 'bold'))) -->
+
+<!-- ``` -->
+
+<!-- ## Lifetime Exposure: Cumulative Fuel Type  -->
+<!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(Smoky) + \beta_2 * I(Mix)$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group. -->
+
+<!-- The estimations of $\beta_0$, $\beta_1$, and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the gas/electricity fuel type to the given fuel type, while holding other variables constant". -->
+
+
+<!-- The numbers of observations with each cumulative fuel type: -->
+<!-- ```{r} -->
+<!-- table(df$cumFuel) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- preform_regression_cumFuel <- function(Y) { -->
+<!--   X = "cumFuel" -->
+<!--   tmp <- df[!is.na(df[,X]),] -->
+
+<!--   tmp$cumFuel = factor(tmp$cumFuel, levels = c("Gas/Elect", "Smoky", "Mix")) -->
+
+<!--   form <- as.formula(paste0(Y,"~",X)) -->
+<!--   lmfit <- lm(form, data = tmp) -->
+
+<!--   coefs <- as.data.frame(summary(lmfit)$coefficients) -->
+<!--   colnames(coefs) <- c("coefficient", "std", "t_val", "pval") -->
+
+<!--   coefs <- coefs %>% -->
+<!--     select(coefficient, std, pval) %>% -->
+<!--     mutate(cl_lower = coefficient - 1.96 * std, -->
+<!--            cl_upper = coefficient + 1.96 * std, -->
+<!--            p_val = ifelse(pval <= 0.001, "<= 0.001", -->
+<!--                         ifelse(pval <= 0.01, "<= 0.01", -->
+<!--                                ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) -->
+<!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect" -->
+<!--   rownames(coefs)[rownames(coefs) == "cumFuelSmoky"] = "Smoky" -->
+<!--   rownames(coefs)[rownames(coefs) == "cumFuelMix"] = "Mix" -->
+
+<!--   return(coefs) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- ```{r linear_regression_lifetime_fueltype_mean, fig.width=10.5, fig.height=5} -->
+<!-- fueltype_gas_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6)) -->
+
+<!-- for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression_cumFuel(EAAs_vars[i]) -->
+<!--     fueltype_gas_mean[i,] <- rlts[1,] -->
+<!--     fueltype_smoky_mean[i,] <- rlts[2,] -->
+<!--     fueltype_mix_mean[i,] <- rlts[3,] -->
+<!-- } -->
+
+<!-- colnames(fueltype_gas_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_smoky_mean) = colnames(rlts) -->
+<!-- colnames(fueltype_mix_mean) = colnames(rlts) -->
+
+<!-- rownames(fueltype_gas_mean) = EAAs_vars -->
+<!-- rownames(fueltype_mix_mean) = EAAs_vars -->
+<!-- rownames(fueltype_smoky_mean) = EAAs_vars -->
+
+<!-- fueltype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!-- p_gas <- make_forest_plot(fueltype_gas_mean, "Gas/Electricity (reference)") -->
+<!-- p_smoky <- make_forest_plot(fueltype_smoky_mean, "Smoky") -->
+<!-- p_mix <- make_forest_plot(fueltype_wood_mean, "Mix") -->
+
+<!-- plot_list <- list(p_gas, p_smoky, p_mix) -->
+
+
+<!-- for(j in 1:3){ -->
+<!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = plot_list,  ncol = 3, -->
+<!--              top = textGrob(paste("Average EAA difference of each Lifetime Fuel Type \ncompared to Gas/Electricity"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- ``` -->
+
+
+
+<!-- ## Current Stove Type -->
+<!-- ```{r} -->
+<!-- table(df$curStove) -->
+<!-- ``` -->
+<!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Portable_stove}) + \beta_2 * I(\text{Ventilated}) + \beta_3 * I(\text{Firepit_and_unventilated}) + \beta_4 * I(\text{Mix})$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations and the baseline as the Gas/Elect stove type from the control group. -->
+
+<!-- The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the Gas/Electricity stove type to the given stove type, while holding other variables constant". -->
+
+<!-- ```{r} -->
+<!-- preform_regression_curStove <- function(Y) { -->
+<!--   X = "curStove" -->
+<!--   tmp <- df[!is.na(df[,X]),] -->
+
+<!--   tmp$curStove = factor(tmp$curStove, levels = c("Gas/Elect", "Portable_stove", "Ventilated", "Firepit_and_unventilated", "Mix")) -->
+
+<!--   form <- as.formula(paste0(Y,"~",X)) -->
+<!--   lmfit <- lm(form, data = tmp) -->
+
+<!--   coefs <- as.data.frame(summary(lmfit)$coefficients) -->
+<!--   colnames(coefs) <- c("coefficient", "std", "t_val", "pval") -->
+
+<!--   coefs <- coefs %>% -->
+<!--     select(coefficient, std, pval) %>% -->
+<!--     mutate(cl_lower = coefficient - 1.96 * std, -->
+<!--            cl_upper = coefficient + 1.96 * std, -->
+<!--            p_val = ifelse(pval <= 0.001, "<= 0.001", -->
+<!--                         ifelse(pval <= 0.01, "<= 0.01", -->
+<!--                                ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) -->
+<!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Gas/Elect" -->
+<!--   rownames(coefs)[rownames(coefs) == "curStovePortable_stove"] = "Portable_stove" -->
+<!--   rownames(coefs)[rownames(coefs) == "curStoveVentilated"] = "Ventilated" -->
+<!--   rownames(coefs)[rownames(coefs) == "curStoveFirepit_and_unventilated"] = "Firepit_and_unventilated" -->
+<!--   rownames(coefs)[rownames(coefs) == "curStoveMix"] = "Mix" -->
 
 <!--   return(coefs) -->
 <!-- } -->
 <!-- ``` -->
 
 <!-- ```{r linear_regression_stovetype_mean, fig.width=7, fig.height=7.5} -->
-<!-- stovetype_FP_mean <- data.frame(matrix(NA, ncol = 6)) -->
-<!-- stovetype_HS_mean <- data.frame(matrix(NA, ncol = 6)) -->
-<!-- stovetype_LS_mean <- data.frame(matrix(NA, ncol = 6)) -->
-<!-- stovetype_Mix_mean <- data.frame(matrix(NA, ncol = 6)) -->
-<!-- stovetype_PS_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- stovetype_gas_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- stovetype_port_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- stovetype_vent_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- stovetype_fire_mean <- data.frame(matrix(NA, ncol = 6)) -->
+<!-- stovetype_mix_mean <- data.frame(matrix(NA, ncol = 6)) -->
 
 
 <!-- for(i in 1:length(EAAs_vars)){ -->
-<!--     rlts = preform_regression_fueltype(EAAs_vars[i]) -->
-<!--     stovetype_FP_mean[i,] <- rlts[1,] -->
-<!--     stovetype_HS_mean[i,] <- rlts[2,] -->
-<!--     stovetype_LS_mean[i,] <- rlts[3,] -->
-<!--     stovetype_Mix_mean[i,] <- rlts[4,] -->
-<!--     stovetype_PS_mean[i,] <- rlts[5,] -->
+<!--     rlts = preform_regression_curStove(EAAs_vars[i]) -->
+<!--     stovetype_gas_mean[i,] <- rlts[1,] -->
+<!--     stovetype_port_mean[i,] <- rlts[2,] -->
+<!--     stovetype_vent_mean[i,] <- rlts[3,] -->
+<!--     stovetype_fire_mean[i,] <- rlts[4,] -->
+<!--     stovetype_mix_mean[i,] <- rlts[5,] -->
 <!-- } -->
 
-<!-- colnames(stovetype_FP_mean) = colnames(rlts) -->
-<!-- colnames(stovetype_HS_mean) = colnames(rlts) -->
-<!-- colnames(stovetype_LS_mean) = colnames(rlts) -->
-<!-- colnames(stovetype_Mix_mean) = colnames(rlts) -->
-<!-- colnames(stovetype_PS_mean) = colnames(rlts) -->
+<!-- colnames(stovetype_gas_mean) = colnames(rlts) -->
+<!-- colnames(stovetype_port_mean) = colnames(rlts) -->
+<!-- colnames(stovetype_vent_mean) = colnames(rlts) -->
+<!-- colnames(stovetype_fire_mean) = colnames(rlts) -->
+<!-- colnames(stovetype_mix_mean) = colnames(rlts) -->
 
-<!-- rownames(stovetype_FP_mean) = EAAs_vars -->
-<!-- rownames(stovetype_HS_mean) = EAAs_vars -->
-<!-- rownames(stovetype_LS_mean) = EAAs_vars -->
-<!-- rownames(stovetype_Mix_mean) = EAAs_vars -->
-<!-- rownames(stovetype_PS_mean) = EAAs_vars -->
+<!-- rownames(stovetype_gas_mean) = EAAs_vars -->
+<!-- rownames(stovetype_port_mean) = EAAs_vars -->
+<!-- rownames(stovetype_vent_mean) = EAAs_vars -->
+<!-- rownames(stovetype_fire_mean) = EAAs_vars -->
+<!-- rownames(stovetype_mix_mean) = EAAs_vars -->
 
-<!-- stovetype_FP_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
-<!-- stovetype_HS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
-<!-- stovetype_LS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
-<!-- stovetype_Mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
-<!-- stovetype_PS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- stovetype_gas_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- stovetype_port_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- stovetype_vent_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- stovetype_fire_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+<!-- stovetype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
 
-<!-- p_FP <- make_forest_plot(stovetype_FP_mean, "FP (reference)") -->
-<!-- p_HS <- make_forest_plot(stovetype_HS_mean, "HS") -->
-<!-- p_LS <- make_forest_plot(stovetype_LS_mean, "LS") -->
-<!-- p_Mix <- make_forest_plot(stovetype_Mix_mean, "Mix") -->
-<!-- p_PS <- make_forest_plot(stovetype_PS_mean, "PS") -->
+<!-- p1 <- make_forest_plot(stovetype_gas_mean, "Gas/Electricity (reference)") -->
+<!-- p2 <- make_forest_plot(stovetype_port_mean, "Portable_stove") -->
+<!-- p3 <- make_forest_plot(stovetype_vent_mean, "Ventilated") -->
+<!-- p4 <- make_forest_plot(stovetype_fire_mean, "Firepit_and_unventilated") -->
+<!-- p5 <- make_forest_plot(stovetype_mix_mean, "Mix") -->
 
-<!-- plot_list <- list(p_FP, p_HS, p_LS, p_Mix, p_PS) -->
+<!-- plot_list <- list(p1, p2, p3, p4, p5) -->
 
 <!-- # grid.arrange(grobs = plot_list,  ncol = 2, -->
 <!-- #              top = textGrob(paste("Average EAA of each Fuel Type"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
 
-<!-- for(j in 1:4){ -->
-<!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-7, 8)) -->
+<!-- for(j in 1:5){ -->
+<!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12)) -->
 <!-- } -->
 <!-- grid.arrange(grobs = plot_list,  ncol = 2, -->
-<!--              top = textGrob(paste("Average EAA difference of each Stove Type compared to FP"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+<!--              layout_matrix = rbind(c(1, NA), -->
+<!--                                    c(2,3), -->
+<!--                                    c(4,5)), -->
+<!--              top = textGrob(paste("Average EAA difference of each Stove Type \ncompared to the control group"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
 
 <!-- ``` -->
 
-# Linear regression with log transformation
-
-In the following section, we performed traditional regression with equation $$Y = \beta_0 + \beta_1 *log(x)$$
-where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements or the urinary measurements. 
-
-The estimations of $\beta_1$ with given $Y$ and $log(X)$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in log(X) while holding other variables constant".
-
-## Ambient Exposure
-```{r linear_reg_coef_log_ambient, fig.width=10, fig.height=16}
-lm_coef_ambient <- data.frame()
-lm_coef_ambient_plots <- list()
-
-for(j in 1:length(ambient_exp_vars)){
-  plot_df <- data.frame(matrix(NA, ncol = 4))
-  for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression(Y = EAAs_vars[i], X = ambient_exp_vars[j], log_trans_X = T)
-    lm_coef_ambient[i,j] <- rlts[1]
-    plot_df[i,] <- rlts[c(2,3,4,5)]
-  }
-  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
-  rownames(plot_df) <- EAAs_vars
-  plot_df$EAAs <- EAAs_names
-  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-  
-  plot_df$coefficient = as.numeric(plot_df$coefficient)
-  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
-  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
-  
-  pj <- make_forest_plot(plot_df, ambient_exp_label[j])
-  lm_coef_ambient_plots[[j]] = pj
-}
 
 
-lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
-colnames(lm_coef_ambient) <- ambient_exp_names
-rownames(lm_coef_ambient) <- c(EAAs_names, "")
+<!-- <!-- ## Stove type --> -->
+<!-- <!-- In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * I(HS) + \beta_2 * I(LS) + \beta_3 * I(Mix) + \beta_4 * I(PS)$$ --> -->
+<!-- <!-- where $Y$ is one of the epigenetic age accelerations and the baseline as the FP stove type. --> -->
+
+<!-- <!-- The estimations of $\beta_0$, $\beta_1$, $\beta_2$, $\beta_3$, and $\beta_4$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the FP stove type to the given stove type, while holding other variables constant". --> -->
+
+<!-- <!-- ```{r} --> -->
+<!-- <!-- table(df$stovetype) --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ```{r} --> -->
+<!-- <!-- preform_regression_fueltype <- function(Y) { --> -->
+<!-- <!--   X = "stovetype" --> -->
+<!-- <!--   tmp <- df[!is.na(df[,X]),] --> -->
+<!-- <!--   form <- as.formula(paste0(Y,"~",X)) --> -->
+<!-- <!--   lmfit <- lm(form, data = tmp) --> -->
+
+<!-- <!--   coefs <- as.data.frame(summary(lmfit)$coefficients) --> -->
+<!-- <!--   colnames(coefs) <- c("coefficient", "std", "t_val", "pval") --> -->
+
+<!-- <!--   coefs <- coefs %>% --> -->
+<!-- <!--     select(coefficient, std, pval) %>% --> -->
+<!-- <!--     mutate(cl_lower = coefficient - 1.96 * std, --> -->
+<!-- <!--            cl_upper = coefficient + 1.96 * std, --> -->
+<!-- <!--            p_val = ifelse(pval <= 0.001, "<= 0.001", --> -->
+<!-- <!--                         ifelse(pval <= 0.01, "<= 0.01", --> -->
+<!-- <!--                                ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) --> -->
+<!-- <!--   rownames(coefs)[rownames(coefs) == "(Intercept)"] = "FP" --> -->
+<!-- <!--   rownames(coefs)[rownames(coefs) == "stovetypeHS"] = "HS" --> -->
+<!-- <!--   rownames(coefs)[rownames(coefs) == "stovetypeLS"] = "LS" --> -->
+<!-- <!--   rownames(coefs)[rownames(coefs) == "stovetypeMix"] = "Mix" --> -->
+<!-- <!--   rownames(coefs)[rownames(coefs) == "stovetypePS"] = "PS" --> -->
+
+<!-- <!--   return(coefs) --> -->
+<!-- <!-- } --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ```{r linear_regression_stovetype_mean, fig.width=7, fig.height=7.5} --> -->
+<!-- <!-- stovetype_FP_mean <- data.frame(matrix(NA, ncol = 6)) --> -->
+<!-- <!-- stovetype_HS_mean <- data.frame(matrix(NA, ncol = 6)) --> -->
+<!-- <!-- stovetype_LS_mean <- data.frame(matrix(NA, ncol = 6)) --> -->
+<!-- <!-- stovetype_Mix_mean <- data.frame(matrix(NA, ncol = 6)) --> -->
+<!-- <!-- stovetype_PS_mean <- data.frame(matrix(NA, ncol = 6)) --> -->
+
+
+<!-- <!-- for(i in 1:length(EAAs_vars)){ --> -->
+<!-- <!--     rlts = preform_regression_fueltype(EAAs_vars[i]) --> -->
+<!-- <!--     stovetype_FP_mean[i,] <- rlts[1,] --> -->
+<!-- <!--     stovetype_HS_mean[i,] <- rlts[2,] --> -->
+<!-- <!--     stovetype_LS_mean[i,] <- rlts[3,] --> -->
+<!-- <!--     stovetype_Mix_mean[i,] <- rlts[4,] --> -->
+<!-- <!--     stovetype_PS_mean[i,] <- rlts[5,] --> -->
+<!-- <!-- } --> -->
+
+<!-- <!-- colnames(stovetype_FP_mean) = colnames(rlts) --> -->
+<!-- <!-- colnames(stovetype_HS_mean) = colnames(rlts) --> -->
+<!-- <!-- colnames(stovetype_LS_mean) = colnames(rlts) --> -->
+<!-- <!-- colnames(stovetype_Mix_mean) = colnames(rlts) --> -->
+<!-- <!-- colnames(stovetype_PS_mean) = colnames(rlts) --> -->
+
+<!-- <!-- rownames(stovetype_FP_mean) = EAAs_vars --> -->
+<!-- <!-- rownames(stovetype_HS_mean) = EAAs_vars --> -->
+<!-- <!-- rownames(stovetype_LS_mean) = EAAs_vars --> -->
+<!-- <!-- rownames(stovetype_Mix_mean) = EAAs_vars --> -->
+<!-- <!-- rownames(stovetype_PS_mean) = EAAs_vars --> -->
+
+<!-- <!-- stovetype_FP_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) --> -->
+<!-- <!-- stovetype_HS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) --> -->
+<!-- <!-- stovetype_LS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) --> -->
+<!-- <!-- stovetype_Mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) --> -->
+<!-- <!-- stovetype_PS_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) --> -->
+
+<!-- <!-- p_FP <- make_forest_plot(stovetype_FP_mean, "FP (reference)") --> -->
+<!-- <!-- p_HS <- make_forest_plot(stovetype_HS_mean, "HS") --> -->
+<!-- <!-- p_LS <- make_forest_plot(stovetype_LS_mean, "LS") --> -->
+<!-- <!-- p_Mix <- make_forest_plot(stovetype_Mix_mean, "Mix") --> -->
+<!-- <!-- p_PS <- make_forest_plot(stovetype_PS_mean, "PS") --> -->
+
+<!-- <!-- plot_list <- list(p_FP, p_HS, p_LS, p_Mix, p_PS) --> -->
+
+<!-- <!-- # grid.arrange(grobs = plot_list,  ncol = 2, --> -->
+<!-- <!-- #              top = textGrob(paste("Average EAA of each Fuel Type"), gp=gpar(fontsize=15, fontface = 'bold'))) --> -->
+
+<!-- <!-- for(j in 1:4){ --> -->
+<!-- <!--   plot_list[[j]] <- plot_list[[j]] + ylim(c(-7, 8)) --> -->
+<!-- <!-- } --> -->
+<!-- <!-- grid.arrange(grobs = plot_list,  ncol = 2, --> -->
+<!-- <!--              top = textGrob(paste("Average EAA difference of each Stove Type compared to FP"), gp=gpar(fontsize=15, fontface = 'bold'))) --> -->
+
+<!-- <!-- ``` --> -->
+
+<!-- # Linear regression with log transformation -->
+
+<!-- In the following section, we performed regression with equation $$Y = \beta_0 + \beta_1 *log(x)$$ -->
+<!-- where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements or the urinary measurements.  -->
+
+<!-- The estimations of $\beta_1$ with given $Y$ and $log(X)$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in log(X) while holding other variables constant". -->
+
+<!-- ## Ambient Exposure -->
+<!-- ```{r linear_reg_coef_log_ambient, fig.width=10, fig.height=16} -->
+<!-- lm_coef_ambient <- data.frame() -->
+<!-- lm_coef_ambient_plots <- list() -->
+
+<!-- for(j in 1:length(ambient_exp_vars)){ -->
+<!--   plot_df <- data.frame(matrix(NA, ncol = 4)) -->
+<!--   for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression(Y = EAAs_vars[i], X = ambient_exp_vars[j], log_trans_X = T) -->
+<!--     lm_coef_ambient[i,j] <- rlts[1] -->
+<!--     plot_df[i,] <- rlts[c(2,3,4,5)] -->
+<!--   } -->
+<!--   colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val") -->
+<!--   rownames(plot_df) <- EAAs_vars -->
+<!--   plot_df$EAAs <- EAAs_names -->
+<!--   plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
+
+<!--   plot_df$coefficient = as.numeric(plot_df$coefficient) -->
+<!--   plot_df$cl_lower = as.numeric(plot_df$cl_lower) -->
+<!--   plot_df$cl_upper = as.numeric(plot_df$cl_upper) -->
+
+<!--   pj <- make_forest_plot(plot_df, ambient_exp_label[j]) -->
+<!--   lm_coef_ambient_plots[[j]] = pj -->
+<!-- } -->
+
+
+<!-- lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]") -->
+<!-- colnames(lm_coef_ambient) <- ambient_exp_names -->
+<!-- rownames(lm_coef_ambient) <- c(EAAs_names, "") -->
 
 
 
-grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
-             top = textGrob(paste("Ambient Exposures (log transformed)"), gp=gpar(fontsize=15, fontface = 'bold')))
+<!-- grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Ambient Exposures (log transformed)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
 
-for(j in 1:length(ambient_exp_vars)){
-  lm_coef_ambient_plots[[j]] <- lm_coef_ambient_plots[[j]] + ylim(c(-2, 2.5))
-}
-grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
-             top = textGrob(paste("Ambient Exposures (log transformed) (same range)"), gp=gpar(fontsize=15, fontface = 'bold')))
+<!-- for(j in 1:length(ambient_exp_vars)){ -->
+<!--   lm_coef_ambient_plots[[j]] <- lm_coef_ambient_plots[[j]] + ylim(c(-2, 2.5)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Ambient Exposures (log transformed) (same range)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
 
-cat("X: Ambient Exposure Measurements:")
-print(lm_coef_ambient)
+<!-- cat("X: Ambient Exposure Measurements:") -->
+<!-- print(lm_coef_ambient) -->
 
-```
+<!-- ``` -->
 
-## Urinary Measurements
-```{r linear_reg_coef_log_urine, fig.width=10, fig.height=9}
-lm_coef_urine <- data.frame()
-lm_coef_urine_plots <- list()
+<!-- ## Urinary Measurements -->
+<!-- ```{r linear_reg_coef_log_urine, fig.width=10, fig.height=9} -->
+<!-- lm_coef_urine <- data.frame() -->
+<!-- lm_coef_urine_plots <- list() -->
 
-for(j in 1:length(urinary_exp_vars)){
-  plot_df <- data.frame(matrix(NA, ncol = 4))
-  for(i in 1:length(EAAs_vars)){
-    rlts = preform_regression(Y = EAAs_vars[i], X = urinary_exp_vars[j], log_trans_X = T)
-    lm_coef_urine[i,j] <- rlts[1]
-    plot_df[i,] <- rlts[c(2,3,4,5)]
-  }
-  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
-  rownames(plot_df) <- EAAs_vars
-  plot_df$EAAs <- EAAs_names
-  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-  
-  plot_df$coefficient = as.numeric(plot_df$coefficient)
-  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
-  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
-  
-  pj <- make_forest_plot(plot_df, urinary_exp_label[j])
-  lm_coef_urine_plots[[j]] = pj
-}
+<!-- for(j in 1:length(urinary_exp_vars)){ -->
+<!--   plot_df <- data.frame(matrix(NA, ncol = 4)) -->
+<!--   for(i in 1:length(EAAs_vars)){ -->
+<!--     rlts = preform_regression(Y = EAAs_vars[i], X = urinary_exp_vars[j], log_trans_X = T) -->
+<!--     lm_coef_urine[i,j] <- rlts[1] -->
+<!--     plot_df[i,] <- rlts[c(2,3,4,5)] -->
+<!--   } -->
+<!--   colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val") -->
+<!--   rownames(plot_df) <- EAAs_vars -->
+<!--   plot_df$EAAs <- EAAs_names -->
+<!--   plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL"))) -->
 
+<!--   plot_df$coefficient = as.numeric(plot_df$coefficient) -->
+<!--   plot_df$cl_lower = as.numeric(plot_df$cl_lower) -->
+<!--   plot_df$cl_upper = as.numeric(plot_df$cl_upper) -->
 
-lm_coef_urine[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
-colnames(lm_coef_urine) <- urinary_exp_names
-rownames(lm_coef_urine) <- c(EAAs_names, "")
+<!--   pj <- make_forest_plot(plot_df, urinary_exp_label[j]) -->
+<!--   lm_coef_urine_plots[[j]] = pj -->
+<!-- } -->
 
 
-
-grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
-             top = textGrob(paste("Urinary Measurements (log transformed)"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-for(j in 1:length(urinary_exp_vars)){
-  lm_coef_urine_plots[[j]] <- lm_coef_urine_plots[[j]] + ylim(c(-2, 2))
-}
-grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
-             top = textGrob(paste("Urinary Measurements (log transformed) (same range)"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-cat("X: Urine Measurements:")
-print(lm_coef_urine)
-
-```
+<!-- lm_coef_urine[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]") -->
+<!-- colnames(lm_coef_urine) <- urinary_exp_names -->
+<!-- rownames(lm_coef_urine) <- c(EAAs_names, "") -->
 
 
-```{r}
-# write.csv(lm_coef_ambient, "../data/2.analysis/lm_coefficients_ambient.csv")
-# write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv")
-```
+
+<!-- grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Urinary Measurements (log transformed)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- for(j in 1:length(urinary_exp_vars)){ -->
+<!--   lm_coef_urine_plots[[j]] <- lm_coef_urine_plots[[j]] + ylim(c(-2, 2)) -->
+<!-- } -->
+<!-- grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3, -->
+<!--              top = textGrob(paste("Urinary Measurements (log transformed) (same range)"), gp=gpar(fontsize=15, fontface = 'bold'))) -->
+
+<!-- cat("X: Urine Measurements:") -->
+<!-- print(lm_coef_urine) -->
+
+<!-- ``` -->
+
 
 <!-- ```{r} -->
-<!-- library(quantreg) -->
-
-<!-- run_quantile_regression <- function(y_var, x_var){ -->
-<!--   Y <- y_var -->
-<!--   X <- "BMI + Age" -->
-<!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) -->
-
-<!--   rqfit <- rq(form, data = df) -->
-<!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) -->
-<!-- } -->
-
-<!-- coef_df <- data.frame() -->
-<!-- for(y_var in clocks_vars){ -->
-<!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { -->
-<!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) -->
-<!--   } -->
-<!-- } -->
-<!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") -->
-
-<!-- cat("Tests with coefficients with p-values < 0.1: \n") -->
-<!-- coef_df[coef_df$p_value < 0.1,] -->
+<!-- # write.csv(lm_coef_ambient, "../data/2.analysis/lm_coefficients_ambient.csv") -->
+<!-- # write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv") -->
 <!-- ``` -->
 
+<!-- <!-- ```{r} --> -->
+<!-- <!-- library(quantreg) --> -->
 
-<!-- ## Quantile Regression -->
-<!-- ```{r} -->
-<!-- library(quantreg) -->
+<!-- <!-- run_quantile_regression <- function(y_var, x_var){ --> -->
+<!-- <!--   Y <- y_var --> -->
+<!-- <!--   X <- "BMI + Age" --> -->
+<!-- <!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) --> -->
 
-<!-- run_quantile_regression <- function(y_var, x_var){ -->
-<!--   Y <- y_var -->
-<!--   X <- "BMI + Age" -->
-<!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) -->
+<!-- <!--   rqfit <- rq(form, data = df) --> -->
+<!-- <!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) --> -->
+<!-- <!-- } --> -->
 
-<!--   rqfit <- rq(form, data = df) -->
-<!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) -->
-<!-- } -->
+<!-- <!-- coef_df <- data.frame() --> -->
+<!-- <!-- for(y_var in clocks_vars){ --> -->
+<!-- <!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { --> -->
+<!-- <!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) --> -->
+<!-- <!--   } --> -->
+<!-- <!-- } --> -->
+<!-- <!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") --> -->
 
-<!-- coef_df <- data.frame() -->
-<!-- for(y_var in clocks_vars){ -->
-<!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { -->
-<!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) -->
-<!--   } -->
-<!-- } -->
-<!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") -->
+<!-- <!-- cat("Tests with coefficients with p-values < 0.1: \n") --> -->
+<!-- <!-- coef_df[coef_df$p_value < 0.1,] --> -->
+<!-- <!-- ``` --> -->
 
-<!-- cat("Tests with coefficients with p-values < 0.1: \n") -->
-<!-- coef_df[coef_df$p_value < 0.1,] -->
-<!-- ``` -->
 
-<!-- ## Quantile Regression -->
-<!-- ```{r} -->
-<!-- library(quantreg) -->
+<!-- <!-- ## Quantile Regression --> -->
+<!-- <!-- ```{r} --> -->
+<!-- <!-- library(quantreg) --> -->
 
-<!-- run_quantile_regression <- function(y_var, x_var){ -->
-<!--   Y <- y_var -->
-<!--   X <- "BMI + Age" -->
-<!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) -->
+<!-- <!-- run_quantile_regression <- function(y_var, x_var){ --> -->
+<!-- <!--   Y <- y_var --> -->
+<!-- <!--   X <- "BMI + Age" --> -->
+<!-- <!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) --> -->
 
-<!--   rqfit <- rq(form, data = df) -->
-<!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) -->
-<!-- } -->
+<!-- <!--   rqfit <- rq(form, data = df) --> -->
+<!-- <!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) --> -->
+<!-- <!-- } --> -->
 
-<!-- coef_df <- data.frame() -->
-<!-- for(y_var in clocks_vars){ -->
-<!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { -->
-<!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) -->
-<!--   } -->
-<!-- } -->
-<!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") -->
+<!-- <!-- coef_df <- data.frame() --> -->
+<!-- <!-- for(y_var in clocks_vars){ --> -->
+<!-- <!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { --> -->
+<!-- <!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) --> -->
+<!-- <!--   } --> -->
+<!-- <!-- } --> -->
+<!-- <!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") --> -->
 
-<!-- cat("Tests with coefficients with p-values < 0.1: \n") -->
-<!-- coef_df[coef_df$p_value < 0.1,] -->
-<!-- ``` -->
+<!-- <!-- cat("Tests with coefficients with p-values < 0.1: \n") --> -->
+<!-- <!-- coef_df[coef_df$p_value < 0.1,] --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ## Quantile Regression --> -->
+<!-- <!-- ```{r} --> -->
+<!-- <!-- library(quantreg) --> -->
+
+<!-- <!-- run_quantile_regression <- function(y_var, x_var){ --> -->
+<!-- <!--   Y <- y_var --> -->
+<!-- <!--   X <- "BMI + Age" --> -->
+<!-- <!--   form <- as.formula(paste0(Y,"~", x_var, "+" ,X)) --> -->
+
+<!-- <!--   rqfit <- rq(form, data = df) --> -->
+<!-- <!--   return(as.numeric(summary(rqfit,se = "nid")$coefficients[2,])) --> -->
+<!-- <!-- } --> -->
+
+<!-- <!-- coef_df <- data.frame() --> -->
+<!-- <!-- for(y_var in clocks_vars){ --> -->
+<!-- <!--   for (x_var in c(urinary_exp_vars, ambient_exp_vars)) { --> -->
+<!-- <!--     coef_df <- rbind(coef_df, c(y_var, x_var, run_quantile_regression(y_var, x_var))) --> -->
+<!-- <!--   } --> -->
+<!-- <!-- } --> -->
+<!-- <!-- names(coef_df) = c("Clock", "Exposure_Measurement", "Ceofficient", "Std.Error", "t_value", "p_value") --> -->
+
+<!-- <!-- cat("Tests with coefficients with p-values < 0.1: \n") --> -->
+<!-- <!-- coef_df[coef_df$p_value < 0.1,] --> -->
+<!-- <!-- ``` --> -->
