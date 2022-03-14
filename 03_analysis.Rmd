@@ -30,6 +30,483 @@ source('shared_commands.R')
 df <- read.csv("../data/data_cleaned.csv")
 ```
 
+# Current (self-reported) fuel type 
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel)
+```
+
+## Primary analysis
+Investigate the association with current (self-reported) fuel type in the LEX study participants, adjusting for known confounders and stove ventilation. The reference group for this analysis would be the smoky coal users. This would be a categorical analysis, and the results would be a p-value from the likelihood ratio (LR) test of a confounder-only model to a model including the exposure variables, as well as p-values for the contrast of each category of coal use (smokeless coal or plant/wood) to that of smoky coal. FDR correction should be used separately for each of these sets. The main interest would be in the coal-specific findings and perhaps less so in the results from the LR test. 
+
+### Likelihood ratio (LR) test
+```{r}
+library(lmtest)
+preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
+  tmp <- df[!is.na(df[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  form_full <- as.formula(paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit_full <- lm(form_full, data = tmp)
+  form_reduced <- as.formula(paste0(Y," ~ ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit_reduced <- lm(form_reduced, data = tmp)
+  
+  lrtest <- lrtest(lmfit_full, lmfit_reduced)
+
+  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
+}
+```
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], X = "curFuel")
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(p_vals_mat)
+```
+
+### Linear regression 
+In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove$$
+where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
+
+The estimations of $\beta_0$, $\beta_1$ and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the smoky fuel type to the given fuel type, while holding other variables constant".
+
+
+```{r}
+preform_regression_curFuel_mix <- function(Y) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+  tmp$curFuel = factor(tmp$curFuel, levels = c("Smoky","Smokeles","Wood_and_or_Plant"))
+  
+  form <- as.formula(paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+  
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smoky (reference)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles"
+  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"
+
+  return(coefs)
+}
+```
+
+```{r}
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+make_forest_plot <- function(df, exposure){
+  df$p_val <- as.factor(df$p_val)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
+    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="Change in year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=8.6, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=8),
+          axis.title.x = element_text(size=8),
+          axis.text = element_text(size=7)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color)
+
+  return(p)
+}
+
+```
+
+```{r linear_relation_curFuel_mix, fig.width=10, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_curFuel_mix(EAAs_vars[i])
+    fueltype_smoky_mean[i,] <- rlts[1,]
+    fueltype_smokeless_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[3,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_smokeless_mean) = EAAs_vars
+rownames(fueltype_woodplant_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot(fueltype_smoky_mean, "Smoky (reference)")
+p2 <- make_forest_plot(fueltype_smokeless_mean, "Smokeless")
+p3 <- make_forest_plot(fueltype_woodplant_mean, "Wood_and_or_Plant")
+
+plot_list <- list(p1, p2, p3)
+
+
+for(j in 1:3){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 10))
+}
+grid.arrange(grobs = plot_list,  ncol = 3,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smoky Coal"), gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+## Sensitivity analyses
+### Single model
+Limit the analyses in the primary analysis to include only a single observation from each subject (no need for a mixed model). The rationale for this is that it is not so easy to obtain unbiased p-values from a mixed model for FDR testing. This can be remediated during FDR testing but would be good to check.
+
+```{r}
+preform_lmtest_simple <- function(Y, X, log_trans_X = F) {
+  tmp <- df[!is.na(df[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  form_full <- as.formula(paste0(Y," ~ ", X))
+  lmfit_full <- lm(form_full, data = tmp)
+  form_reduced <- as.formula(paste0(Y," ~ 1"))
+  lmfit_reduced <- lm(form_reduced, data = tmp)
+  
+  lrtest <- lrtest(lmfit_full, lmfit_reduced)
+
+  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
+}
+```
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], X = "curFuel")
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(p_vals_mat)
+```
+
+### Linear relation
+Use a trend test to estimate a linear relation across use categories (0=gas/electricity, 1=wood, 2=smokeless coal, 3=smoky coal). 
+```{r}
+preform_regression_curFuel_simple <- function(Y) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+
+  tmp$curFuel[tmp$curFuel == "Wood_and_or_Plant"] = 1
+  tmp$curFuel[tmp$curFuel == "Smokeles"] = 2
+  tmp$curFuel[tmp$curFuel == "Smoky"] = 3
+  tmp$curFuel <- as.numeric(tmp$curFuel)
+
+  form <- as.formula(paste0(Y," ~ ", X))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+
+  return(coefs)
+}
+```
+
+```{r linear_relation_curFuel_simple, fig.width=4, fig.height=3}
+curFuel_slope <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_curFuel_simple(EAAs_vars[i])
+    curFuel_slope[i,] <- rlts[2,]
+}
+
+colnames(curFuel_slope) = colnames(rlts)
+
+rownames(curFuel_slope) = EAAs_vars
+
+curFuel_slope$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+make_forest_plot(fueltype_smoky_mean, "Slope of current (self-reported) fuel type ") + 
+  theme(plot.title = element_text(size=14, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=7))
+ggsave("linear_relation_curFuel_simple.png", dpi=1200)
+
+```
+
+
+
+
+
+
+
+
+# Cumulative lifetime (self-reported) fuel type 
+The numbers of observations with each cumulative lifetime fuel type:
+```{r}
+table(df$cumFuel)
+```
+
+## Primary analysis
+
+### Likelihood ratio (LR) test
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], X = "cumFuel")
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(p_vals_mat)
+```
+
+
+#===============================
+### Linear regression 
+In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \beta_7 * curStove$$
+where $Y$ is one of the epigenetic age accelerations and the reference as the gas/electricity fuel type from the control group.
+
+The estimations of $\beta_0$, $\beta_1$ and $\beta_2$ with given $Y$ are shown below, which can be interpreted as "the expected change of Y if switching form the smoky fuel type to the given fuel type, while holding other variables constant".
+
+
+```{r}
+preform_regression_curFuel_mix <- function(Y) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+  tmp$curFuel = factor(tmp$curFuel, levels = c("Smoky","Smokeles","Wood_and_or_Plant"))
+  
+  form <- as.formula(paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+  
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smoky (reference)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles"
+  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"
+
+  return(coefs)
+}
+```
+
+```{r}
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+make_forest_plot <- function(df, exposure){
+  df$p_val <- as.factor(df$p_val)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
+    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="Change in year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=8.6, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=8),
+          axis.title.x = element_text(size=8),
+          axis.text = element_text(size=7)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color)
+
+  return(p)
+}
+
+```
+
+```{r linear_relation_curFuel_mix, fig.width=10, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_curFuel_mix(EAAs_vars[i])
+    fueltype_smoky_mean[i,] <- rlts[1,]
+    fueltype_smokeless_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[3,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_smokeless_mean) = EAAs_vars
+rownames(fueltype_woodplant_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot(fueltype_smoky_mean, "Smoky (reference)")
+p2 <- make_forest_plot(fueltype_smokeless_mean, "Smokeless")
+p3 <- make_forest_plot(fueltype_woodplant_mean, "Wood_and_or_Plant")
+
+plot_list <- list(p1, p2, p3)
+
+
+for(j in 1:3){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 10))
+}
+grid.arrange(grobs = plot_list,  ncol = 3,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smoky Coal"), gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+## Sensitivity analyses
+### Single model
+Limit the analyses in the primary analysis to include only a single observation from each subject (no need for a mixed model). The rationale for this is that it is not so easy to obtain unbiased p-values from a mixed model for FDR testing. This can be remediated during FDR testing but would be good to check.
+
+```{r}
+preform_lmtest_simple <- function(Y, X, log_trans_X = F) {
+  tmp <- df[!is.na(df[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  form_full <- as.formula(paste0(Y," ~ ", X))
+  lmfit_full <- lm(form_full, data = tmp)
+  form_reduced <- as.formula(paste0(Y," ~ 1"))
+  lmfit_reduced <- lm(form_reduced, data = tmp)
+  
+  lrtest <- lrtest(lmfit_full, lmfit_reduced)
+
+  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
+}
+```
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], X = "curFuel")
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(p_vals_mat)
+```
+
+### Linear relation
+Use a trend test to estimate a linear relation across use categories (0=gas/electricity, 1=wood, 2=smokeless coal, 3=smoky coal). 
+```{r}
+preform_regression_curFuel_simple <- function(Y) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+
+  tmp$curFuel[tmp$curFuel == "Wood_and_or_Plant"] = 1
+  tmp$curFuel[tmp$curFuel == "Smokeles"] = 2
+  tmp$curFuel[tmp$curFuel == "Smoky"] = 3
+  tmp$curFuel <- as.numeric(tmp$curFuel)
+
+  form <- as.formula(paste0(Y," ~ ", X))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+
+  return(coefs)
+}
+```
+
+```{r linear_relation_curFuel_simple, fig.width=4, fig.height=3}
+curFuel_slope <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_curFuel_simple(EAAs_vars[i])
+    curFuel_slope[i,] <- rlts[2,]
+}
+
+colnames(curFuel_slope) = colnames(rlts)
+
+rownames(curFuel_slope) = EAAs_vars
+
+curFuel_slope$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+make_forest_plot(fueltype_smoky_mean, "Slope of current (self-reported) fuel type ") + 
+  theme(plot.title = element_text(size=14, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=7))
+ggsave("linear_relation_curFuel_simple.png", dpi=1200)
+
+```
+
+
+
+
+
+
+
 # Linear regression
 In the following section, we performed traditional linear regression with equation $$Y = \beta_0 + \beta_1 *X$$
 where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements or the urinary measurements. 
@@ -63,30 +540,7 @@ preform_regression <- function(Y, X, log_trans_X = F) {
   return(c(rlt, coef, cl_l, cl_u, sig))
 }
 
-sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
 
-make_forest_plot <- function(df, exposure){
-  df$p_val <- as.factor(df$p_val)
-  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
-    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
-    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
-    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
-    # ylim(c(-2,2)) +  # not working
-    coord_flip() +  # flip coordinates (puts labels on y axis)
-    labs(x=expression(log[2]-PFAS))+
-    labs(y="Change in year") +
-    ggtitle(exposure)+
-    theme(plot.title = element_text(size=8.6, hjust = 0.5),
-          axis.title.y = element_blank(),
-          panel.grid.major.x = element_blank(),
-          axis.text.y = element_text(size=8),
-          axis.title.x = element_text(size=8),
-          axis.text = element_text(size=7)) +
-    scale_color_manual(values = sig_color) +
-    scale_fill_manual(values = sig_color)
-
-  return(p)
-}
 
 
 options(scipen = 999)
