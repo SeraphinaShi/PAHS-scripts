@@ -251,8 +251,79 @@ count_miss_per_obs(dat[,urinary_exp_vars])
 ```
 
 
+# Control Group
+## Table with summarize info 
+```{r fig.width=6, fig.height=4}
+dat[dat$Group != "LEX",] %>%  
+  select(-SID) %>% 
+  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
+                             all_categorical() ~ "{n} / {N} ({p}%)"),
+              missing_text = "(Missing)")
+```
 
+## Clock values
+```{r clocks_vs_groups, fig.height=3, fig.width=8}
+library(reshape2)
+meltdf <- melt(data = dat %>% select(c("SID", "Group", "Age", clocks_vars[-6])), id.vars = c("SID", "Group"))
+ggplot(meltdf, aes(x=as.factor(variable), y=value, fill=Group))+
+  geom_boxplot(position = position_dodge(width = 1)) +  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x="Age and Clocks", title = "Compare ages and clocks between two groups")
+ggsave("age_clocks_vs_groups.png", width=10, height=3, dpi=1200)
+```
 
+## Correlogram Between clocks
+```{r correlogram_clocks_control, fig.width=10, fig.height=10}
+library(GGally)
+ggpairs(dat[dat$Group=="LCW Clean Ctrl",c("Age", clocks_vars)]) +
+  labs(title = "Correlogram of all clocks \n Control Group") +
+  theme(plot.title = element_text(hjust=0.5, size=24)) 
+ggsave("correlogram_clocks_control.png", dpi=1200)
+```
+
+## Scatterplots of age vs each epigenetic age
+```{r}
+median_absolute_error <- function(clock_var){
+  return( median(abs(dat[,clock_var] - dat$Age)))
+}
+
+MAE <- sapply(clocks_vars[1:5], median_absolute_error)
+
+age_vs_clock <- function(df_group, clock, clock_name) {
+  if(is.na(df_group)){
+    df_tmp <- dat
+  } else {
+    df_tmp <- dat[dat$Group == df_group,]
+  }
+  cor_test <- cor.test(df_tmp$Age, df_tmp[,clock])
+  r_pearson <- paste0("r=", round(cor_test$estimate, 2))
+  p_val <- ifelse(cor_test$p.value<0.0001, "P<0.0001", 
+                  ifelse(cor_test$p.value<0.001, "P<0.001", 
+                         ifelse(cor_test$p.value<0.01, "P<0.01", 
+                                paste0("P=", round(cor_test$p.value, 2)))))
+  MAE <- paste0("MAE=", round(median_absolute_error(clock),2))
+  ttl <- ifelse(clock == "DNAmTL", paste0("[", LETTERS[which(clocks_vars == clock)], "]: ",r_pearson, ", ", p_val),
+                  paste0("[", LETTERS[which(clocks_vars == clock)], "]: ",r_pearson, ", ", p_val, ", ", MAE, " (years)"))
+  pi <- ggplot(df_tmp, aes_string(x="Age", y=clock)) +
+    geom_point() + 
+    labs(y=clock_name, x="Chronological Age (years)",
+         title = ttl) +
+    geom_smooth(method = lm, se=T, col = "black") +
+    theme(plot.title = element_text(size=10))
+  return(pi)
+}
+```
+
+```{r plots_clocks_vs_age_ctrol, fig.width=9, fig.height=6}
+plots_clocks_vs_age <- mapply(age_vs_clock, rep("LCW Clean Ctrl", 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
+```
+
+# Remove the control group from data
+```{r}
+dat <- dat[dat$Group == "LEX", ]
+```
 
 # Output data
 ```{r}

@@ -32,7 +32,6 @@ source('shared_commands.R')
 df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
 ```
 
-
 # Table with summarize info [table 1]
 ## For all observations (including the control group)
 ```{r fig.width=6, fig.height=4}
