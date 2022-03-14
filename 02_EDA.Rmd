@@ -33,7 +33,7 @@ df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
 ```
 
 # Table with summarize info [table 1]
-## For all observations (including the control group)
+## For all observations
 ```{r fig.width=6, fig.height=4}
 # cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
 # cat("Number of females:                                       ", sum(df$predictedGender == "female"))
@@ -46,32 +46,6 @@ df %>% select(-unlist(var_name_list$ID)) %>%
 ```
 
 
-## For observations in the treatment group 
-```{r fig.width=6, fig.height=4}
-# cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
-# cat("Number of females:                                       ", sum(df$predictedGender == "female"))
-# summary(df[,c(var_cont)])
-# df[,c(var_cont, var_cat)] %>% tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))
-df[df$Group =="LEX",] %>%  
-  select(-SID) %>% 
-  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
-                             all_categorical() ~ "{n} / {N} ({p}%)"),
-              missing_text = "(Missing)")
-```
-
-## For observations in the control group 
-```{r fig.width=6, fig.height=4}
-# cat("Sample size with complete urinary and ambient exposures: ", nrow(df))
-# cat("Number of females:                                       ", sum(df$predictedGender == "female"))
-# summary(df[,c(var_cont)])
-# df[,c(var_cont, var_cat)] %>% tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))
-df[df$Group != "LEX",] %>%  
-  select(-SID) %>% 
-  tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
-                             all_categorical() ~ "{n} / {N} ({p}%)"),
-              missing_text = "(Missing)")
-```
-
 ## Fuel Types Summary table
 Current Fuel vs Birth Fuel + Cumulative
 ```{r}
@@ -81,7 +55,6 @@ dcast(df, brthFuel+cumFuel ~ curFuel)
 
 
 # PCA 
-Only the treatment group are used in this PCA exploration.
 ```{r pca_clocks, fig.height=10, fig.width=7}
 library(ggfortify) 
 library(tidyr)
@@ -146,30 +119,12 @@ ggsave("age_clocks_vs_groups.png", width=10, height=3, dpi=1200)
 
 ## Correlogram
 ### Between clocks
-
-#### All subjects
 ```{r correlogram_clocks, fig.width=10, fig.height=10}
 library(GGally)
 ggpairs(df[,c("Age", clocks_vars)]) +
   labs(title = "Correlogram of all clocks \n All subjects") +
   theme(plot.title = element_text(hjust=0.5, size=24)) 
 ggsave("correlogram_clocks.png", dpi=1200)
-```
-
-#### Control Group
-```{r correlogram_clocks_control, fig.width=10, fig.height=10}
-ggpairs(df[df$Group=="LCW Clean Ctrl",c("Age", clocks_vars)]) +
-  labs(title = "Correlogram of all clocks \n Control Group") +
-  theme(plot.title = element_text(hjust=0.5, size=24)) 
-ggsave("correlogram_clocks_control.png", dpi=1200)
-```
-
-#### Treatment Group
-```{r correlogram_clocks_trt, fig.width=10, fig.height=10}
-ggpairs(df[df$Group!="LCW Clean Ctrl",c("Age", clocks_vars)]) +
-  labs(title = "Correlogram of all clocks \n Trearment Group") +
-  theme(plot.title = element_text(hjust=0.5, size=24)) 
-ggsave("correlogram_clocks_trt.png", dpi=1200)
 ```
 
 
@@ -186,7 +141,6 @@ MAE
 
 
 ## Scatterplots of age vs each epigenetic age
-### All subjects
 ```{r plots_clocks_vs_age, fig.width=9, fig.height=6}
 age_vs_clock <- function(df_group, clock, clock_name) {
   if(is.na(df_group)){
@@ -213,19 +167,6 @@ age_vs_clock <- function(df_group, clock, clock_name) {
 }
 
 plots_clocks_vs_age <- mapply(age_vs_clock, rep(NA, 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
-do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
-```
-
-### Control Group
-```{r plots_clocks_vs_age_ctrol, fig.width=9, fig.height=6}
-plots_clocks_vs_age <- mapply(age_vs_clock, rep("LCW Clean Ctrl", 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
-do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
-```
-
-
-### Treatment Group
-```{r plots_clocks_vs_age_trt, fig.width=9, fig.height=6}
-plots_clocks_vs_age <- mapply(age_vs_clock, rep("LEX", 6), clocks_vars, clock_names_extra, SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_clocks_vs_age, ncol=3))
 ```
 
@@ -262,7 +203,6 @@ corrplot(cor( na.omit(df[,c(urinary_exp_vars)]) ),  addCoef.col = 'black', type 
 
 ### Between Ambient and Urinary Exposure Measurements
 ```{r correlogram_ambient_urinary, fig.width=20, fig.height=20}
-library(GGally)
 ggpairs(df[,c(ambient_exp_vars, urinary_exp_vars)]) +
   labs(title = "Correlogram of all Ambient and Urinary Exposure Measurements") +
   theme(plot.title = element_text(hjust=0.5, size=24))
@@ -273,12 +213,21 @@ ggpairs(df[,c(ambient_exp_vars, urinary_exp_vars)]) +
 corrplot(cor( na.omit(df[,c(ambient_exp_vars, urinary_exp_vars)]) ),  addCoef.col = 'black', type = 'lower')
 ```
 
-
+### Between Clustered Exposure Measurements
+```{r correlogram_clusteredExp, fig.width=20, fig.height=20}
+ggpairs(df[,unname(unlist(var_name_list$cluster_exp))]) +
+  labs(title = "Correlogram of all Clustered Exposure Measurements") +
+  theme(plot.title = element_text(hjust=0.5, size=24))
+```
+```{r correlation_clusteredExp, fig.height=12, fig.width=12}
+corrplot(cor( na.omit(df[,unname(unlist(var_name_list$cluster_exp))]) ),  addCoef.col = 'black', type = 'lower')
+```
 
 
 # Clocks vs Measurements
 ## Pairplots
-```{r clock_urine, exps, fig.width=12, fig.height=8}
+### Urinary Exposure Measurements
+```{r clock_urine_exps, fig.width=12, fig.height=8}
 df[,c("SID", clocks_vars, urinary_exp_vars)] %>% 
   tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
   tidyr::gather(ambient_exp, measurements, Benzanthracene_Chrysene_urine:Pyrene_urine) %>% 
@@ -296,6 +245,7 @@ df[,c("SID", clocks_vars, urinary_exp_vars)] %>%
 ggsave("clock_urine_exps.png", dpi=1200)
 ```
 
+### Ambient Exposure Measurements
 ```{r clock_air_exps, fig.width=16, fig.height=6}
 df[,c("SID", clocks_vars, ambient_exp_vars)] %>% 
   tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
@@ -352,3 +302,99 @@ df[,c("SID", clocks_vars, ambient_exp_vars[8:15])] %>%
 ggsave("clock_air_exps_2.png", dpi=1200)
 ```
 
+### Clustered Exposure Measurements
+```{r clock_cluster_exps, fig.width=20, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, CUR6_BC_PAH6:URI5_CHR) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=24))
+ggsave("clock_cluster_exps.png", dpi=1200)
+```
+
+```{r clock_cluster_exps_clusCUR6, fig.width=8, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp$clusCUR6)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, CUR6_BC_PAH6:CUR6_SO2) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements from clusCUR6", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=14))
+ggsave("clock_cluster_exps_clusCUR6.png", dpi=1200)
+```
+
+```{r clock_cluster_exps_clusCHLD5, fig.width=8, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp$clusCHLD5)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, CHLD5_X7:CHLD5_SO2) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements from clusCHLD5", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=14))
+ggsave("clock_cluster_exps_clusCHLD5.png", dpi=1200)
+```
+
+```{r clock_cluster_exps_clusCUM6, fig.width=8, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp$clusCUM6)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, CUM6_BC_NO2_PM:CUM6_SO2) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements from clusCUM6", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=14))
+ggsave("clock_cluster_exps_clusCUM6.png", dpi=1200)
+```
+
+```{r clock_cluster_exps_clusMEAS6, fig.width=8, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp$clusMEAS6)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, MEAS6_BC_PM_RET:MEAS6_NO2_SO2) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements from clusMEAS6", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=14))
+ggsave("clock_cluster_exps_clusMEAS6.png", dpi=1200)
+```
+
+```{r clock_cluster_exps_clusURI5, fig.width=8, fig.height=8}
+df[,c("SID", clocks_vars, unname(unlist(var_name_list$cluster_exp$clusURI5)))] %>% 
+  tidyr::gather(clocks_name, clock_age, DNAmAge:DNAmTL) %>%
+  tidyr::gather(cluster_exp, measurements, URI5_NAP_1M_2M:URI5_CHR) %>% 
+  mutate(clocks_name = str_replace(clocks_name, 'clock', '')) %>% 
+  ggplot(aes(y=clock_age, x=measurements)) +
+  geom_point() + 
+  geom_smooth(se = FALSE, method = "gam", formula = y ~ x) +
+  facet_grid(clocks_name ~ cluster_exp, scales="free") +
+  labs(title="Epigenetic Age vs Clustered Exposure Measurements from clusURI5", 
+       y = "Epigenetic Age",
+       x = "Clustered Exposure Measurements") +
+  theme(plot.title=element_text(hjust=0.5, size=14))
+ggsave("clock_cluster_exps_clusURI5.png", dpi=1200)
+```
