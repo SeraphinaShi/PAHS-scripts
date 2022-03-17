@@ -96,25 +96,25 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 ```{r}
-sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
-
-library('plot.matrix')
-library('psych')
-par(mar=c(7.1, 4.1, 4.1, 4.1)) # adapt margins
-# plot(p_vals_mat, cex=0.5, assignColors())
-
-# x <- runif(100)
-plot(p_vals_mat, 
-     border=NA,
-     axis.row=list(side=2, las=1),
-     col = assignColors(c(0:1000/1000), 
-                        breaks=c(0, 0.001, 0.01,0.05,1),
-                  col = c("#7CAE00", "#00BFC4", "#C77CFF", "gray87")))
-# set breaks
-# assignColors(x, breaks=15)
-# assignColors(x, breaks=c(0,1))
-
-plot(p_vals_mat)
+# sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+# 
+# library('plot.matrix')
+# library('psych')
+# par(mar=c(7.1, 4.1, 4.1, 4.1)) # adapt margins
+# # plot(p_vals_mat, cex=0.5, assignColors())
+# 
+# # x <- runif(100)
+# plot(p_vals_mat, 
+#      border=NA,
+#      axis.row=list(side=2, las=1),
+#      col = assignColors(c(0:1000/1000), 
+#                         breaks=c(0, 0.001, 0.01,0.05,1),
+#                   col = c("#7CAE00", "#00BFC4", "#C77CFF", "gray87")))
+# # set breaks
+# # assignColors(x, breaks=15)
+# # assignColors(x, breaks=c(0,1))
+# 
+# plot(p_vals_mat)
 
 ```
 
@@ -890,7 +890,7 @@ preform_regression_exposure_prototype <- function(X, Y, log_trans_X=F) {
 ```
 
 
-```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+```{r linear_relation_clusCUR6_mix, fig.width=8, fig.height=7}
 CUR6_BC_PAH6 <- data.frame(matrix(NA, ncol = 7))
 CUR6_PAH31 <- data.frame(matrix(NA, ncol = 7))
 CUR6_NkF <- data.frame(matrix(NA, ncol = 7))
@@ -1088,7 +1088,7 @@ where $Y$ is one of the epigenetic age accelerations.
 The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
 
 
-```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+```{r linear_relation_clusCHLD5_mix, fig.width=8, fig.height=7}
 CHLD5_X7 <- data.frame(matrix(NA, ncol = 7))
 CHLD5_X33 <- data.frame(matrix(NA, ncol = 7))
 CHLD5_NkF <- data.frame(matrix(NA, ncol = 7))
@@ -1282,7 +1282,7 @@ where $Y$ is one of the epigenetic age accelerations.
 The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
 
 
-```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+```{r linear_relation_clusCUM6_mix, fig.width=8, fig.height=7}
 CUM6_BC_NO2_PM <- data.frame(matrix(NA, ncol = 7))
 CUM6_PAH36 <- data.frame(matrix(NA, ncol = 7))
 CUM6_DlP <- data.frame(matrix(NA, ncol = 7))
@@ -1486,7 +1486,7 @@ where $Y$ is one of the epigenetic age accelerations.
 The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
 
 
-```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+```{r linear_relation_clusURI5, fig.width=8, fig.height=7}
 URI5_NAP_1M_2M <- data.frame(matrix(NA, ncol = 7))
 URI5_ACE <- data.frame(matrix(NA, ncol = 7))
 URI5_FLU_PHE <- data.frame(matrix(NA, ncol = 7))
