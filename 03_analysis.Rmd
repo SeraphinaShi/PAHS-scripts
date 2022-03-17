@@ -1417,6 +1417,205 @@ print(round(p_vals_mat,4))
 
 
 
+# Clusters based on pollutant measurements (clusMEAS6)
+# Clusters based on urinary biomarkers (clusURI5)
+The file “LEX_clusURI5.csv” has information on measured urinary biomarkers obtained during each visit. Estimates are available for 5 different prototypes (cluster variables) for a total of 163 subjects and 186 visits. The prototypes are labelled as:  
+
+
+URI5_NAP_1M_2M – a cluster of Naphthalene, 1Methylnaphthalene, and 2Methylnaphthalene  
+URI5_ACE – Acenaphthene only  
+URI5_FLU_PHE – Fluoranthene and Phenanthrene_anth  
+URI5_PYR – Pyrene only  
+URI5_CHR – Baa_Chrysene only  
+ 
+
+
+
+## Summary the exposure estimates:
+```{r}
+summary(df %>% select(var_name_list$cluster_exp$clusURI5))
+```
+
+## Primary analysis
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR}\\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_{9} * edu + \beta_{10} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$cluster_exp$clusURI5)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Linear regression 
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR}\\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_{9} * edu + \beta_{10} * curStove + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.  
+ 
+The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
+
+
+```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+URI5_NAP_1M_2M <- data.frame(matrix(NA, ncol = 7))
+URI5_ACE <- data.frame(matrix(NA, ncol = 7))
+URI5_FLU_PHE <- data.frame(matrix(NA, ncol = 7))
+URI5_PYR <- data.frame(matrix(NA, ncol = 7))
+URI5_CHR <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_exposure_prototype(X = unname(unlist(var_name_list$cluster_exp$clusURI5)),
+                                                 Y = EAAs_vars[i])
+    URI5_NAP_1M_2M[i,] <- rlts["URI5_NAP_1M_2M",]
+    URI5_ACE[i,] <- rlts["URI5_ACE",]
+    URI5_FLU_PHE[i,] <- rlts["URI5_FLU_PHE",]
+    URI5_PYR[i,] <- rlts["URI5_PYR",]
+    URI5_CHR[i,] <- rlts["URI5_CHR",]
+}
+
+colnames(URI5_NAP_1M_2M) = colnames(rlts)
+colnames(URI5_ACE) = colnames(rlts)
+colnames(URI5_FLU_PHE) = colnames(rlts)
+colnames(URI5_PYR) = colnames(rlts)
+colnames(URI5_CHR) = colnames(rlts)
+
+rownames(URI5_NAP_1M_2M) = EAAs_vars
+rownames(URI5_ACE) = EAAs_vars
+rownames(URI5_FLU_PHE) = EAAs_vars
+rownames(URI5_PYR) = EAAs_vars
+rownames(URI5_CHR) = EAAs_vars
+
+URI5_NAP_1M_2M$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+URI5_ACE$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+URI5_FLU_PHE$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+URI5_PYR$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+URI5_CHR$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(URI5_NAP_1M_2M, "X7")
+p2 <- make_forest_plot_lg(URI5_ACE, "X33")
+p3 <- make_forest_plot_lg(URI5_FLU_PHE, "NkF")
+p4 <- make_forest_plot_lg(URI5_PYR, "NO2")
+p5 <- make_forest_plot_lg(URI5_CHR, "SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+
+for(j in 1:5){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each exposure prototype \n based on urinary biomarkers"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+## Sensitivity analyses
+### Likelihood ratio (LR) test (single model)
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusURI5)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusURI5)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusURI5)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+
+
+
+
 # Ambient Exposure
 ## Linear regression (simple model)
 
@@ -1581,6 +1780,8 @@ write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv")
 knitr::knit_exit()
 ```
 
+
+# Not knitted: 
 
 # Linear regression
 In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 *X$$
