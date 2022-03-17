@@ -62,12 +62,18 @@ P-values results:
 ```{r}
 library(lmtest)
 preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
-  tmp <- df[!is.na(df[,X]),]
-  if(log_trans_X) {
-    tmp[,X] <- log(tmp[,X])
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
   }
   
-  form_full <- as.formula(paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  X_form <- paste(X, collapse  = " + ")
+  
+  form_full <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
   lmfit_full <- lm(form_full, data = tmp)
   form_reduced <- as.formula(paste0(Y," ~ ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
   lmfit_reduced <- lm(form_reduced, data = tmp)
@@ -263,13 +269,19 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 P-values results: 
 
 ```{r}
-preform_lmtest_simple <- function(Y, X, log_trans_X = F) {
-  tmp <- df[!is.na(df[,X]),]
-  if(log_trans_X) {
-    tmp[,X] <- log(tmp[,X])
+preform_lmtest_simple <- function(Y, X, dat = df, log_trans_X = F) {
+  tmp <- dat
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
   }
   
-  form_full <- as.formula(paste0(Y," ~ ", X))
+  X_form <- paste(X, collapse  = " + ")
+  
+  form_full <- as.formula(paste0(Y," ~ ", X_form))
   lmfit_full <- lm(form_full, data = tmp)
   form_reduced <- as.formula(paste0(Y," ~ 1"))
   lmfit_reduced <- lm(form_reduced, data = tmp)
@@ -771,6 +783,634 @@ make_forest_plot_lg(curFuel_slope, "Slope of cildhood (self-reported) fuel type 
 ggsave("linear_relation_brthFuel_simple.png", dpi=1200)
 
 ```
+
+
+
+# Clusters based on model-based exposure estimates at or shortly before the visit (clusCUR6)
+The file “LEX_clusCUR6.csv” has information on current pollutant exposures, obtained for the 2 years preceding the visit. To reduce multi-collinearity between exposures, exposure prototypes were derived based on hierarchical cluster analysis in combination followed by principal components analysis. These estimates are available for 6 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:
+
+CUR6_BC_PAH6 – Black carbon (BC) and 6 PAHs   
+CUR6_PAH31 – a large cluster of 31 PAHs  
+CUR6_NkF – NkF only  
+CUR6_PM_RET – Particulate matter (PM) and retene  
+CUR6_NO2 – NO2 only  
+CUR6_SO2 – SO2 only    
+
+
+
+## Summary the exposure estimates:
+```{r}
+summary(df %>% select(var_name_list$cluster_exp$clusCUR6))
+```
+
+## Primary analysis
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2}\\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_{10} * edu + \beta_{11} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$cluster_exp$clusCUR6)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Linear regression 
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2}\\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_{10} * edu + \beta_{11} * curStove + \epsilon
+\end{aligned}
+$$ 
+where $Y$ is one of the epigenetic age accelerations.  
+ 
+The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
+
+
+```{r}
+preform_regression_exposure_prototype <- function(X, Y, log_trans_X=F) {
+  
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+
+  form <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+  
+  return(coefs)
+}
+```
+
+
+```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+CUR6_BC_PAH6 <- data.frame(matrix(NA, ncol = 7))
+CUR6_PAH31 <- data.frame(matrix(NA, ncol = 7))
+CUR6_NkF <- data.frame(matrix(NA, ncol = 7))
+CUR6_PM_RET <- data.frame(matrix(NA, ncol = 7))
+CUR6_NO2 <- data.frame(matrix(NA, ncol = 7))
+CUR6_SO2 <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_exposure_prototype(X = unname(unlist(var_name_list$cluster_exp$clusCUR6)),
+                                                 Y = EAAs_vars[i])
+    CUR6_BC_PAH6[i,] <- rlts["CUR6_BC_PAH6",]
+    CUR6_PAH31[i,] <- rlts["CUR6_PAH31",]
+    CUR6_NkF[i,] <- rlts["CUR6_NkF",]
+    CUR6_PM_RET[i,] <- rlts["CUR6_PM_RET",]
+    CUR6_NO2[i,] <- rlts["CUR6_NO2",]
+    CUR6_SO2[i,] <- rlts["CUR6_SO2",]
+}
+
+colnames(CUR6_BC_PAH6) = colnames(rlts)
+colnames(CUR6_PAH31) = colnames(rlts)
+colnames(CUR6_NkF) = colnames(rlts)
+colnames(CUR6_PM_RET) = colnames(rlts)
+colnames(CUR6_NO2) = colnames(rlts)
+colnames(CUR6_SO2) = colnames(rlts)
+
+rownames(CUR6_BC_PAH6) = EAAs_vars
+rownames(CUR6_PAH31) = EAAs_vars
+rownames(CUR6_NkF) = EAAs_vars
+rownames(CUR6_PM_RET) = EAAs_vars
+rownames(CUR6_NO2) = EAAs_vars
+rownames(CUR6_SO2) = EAAs_vars
+
+CUR6_BC_PAH6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUR6_PAH31$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUR6_NkF$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUR6_PM_RET$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUR6_NO2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUR6_SO2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(CUR6_BC_PAH6, "BC_PAH6")
+p2 <- make_forest_plot_lg(CUR6_PAH31, "PAH31")
+p3 <- make_forest_plot_lg(CUR6_NkF, "NkF")
+p4 <- make_forest_plot_lg(CUR6_PM_RET, "PM_RET")
+p5 <- make_forest_plot_lg(CUR6_NO2, "NO2")
+p6 <- make_forest_plot_lg(CUR6_SO2, "SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each exposure prototype \n based on current pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+## Sensitivity analyses
+### Likelihood ratio (LR) test (single model)
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUR6)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUR6)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUR6)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+
+# Clusters based on model-based exposure estimates accrued before age 18 (clusCHLD5)
+The file “LEX_clusCHLD5.csv” has information on estimated pollutant exposures during early childhood. Estimates are available for 5 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:
+
+CHLD5_X7 – a cluster of 7 air pollutants  
+CHLD5_X33 – a large cluster of 33 air pollutants  
+CHLD5_NkF – NkF only  
+CHLD5_NO2 – NO2 only  
+CHLD5_SO2 – SO2 only    
+
+
+## Summary the exposure estimates:
+```{r}
+summary(df %>% select(var_name_list$cluster_exp$clusCHLD5))
+```
+
+## Primary analysis
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2}\\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_{9} * edu + \beta_{10} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$cluster_exp$clusCHLD5)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Linear regression 
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2}\\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_{9} * edu + \beta_{10} * curStove + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.  
+ 
+The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, and $\beta_5$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
+
+
+```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+CHLD5_X7 <- data.frame(matrix(NA, ncol = 7))
+CHLD5_X33 <- data.frame(matrix(NA, ncol = 7))
+CHLD5_NkF <- data.frame(matrix(NA, ncol = 7))
+CHLD5_NO2 <- data.frame(matrix(NA, ncol = 7))
+CHLD5_SO2 <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_exposure_prototype(X = unname(unlist(var_name_list$cluster_exp$clusCHLD5)),
+                                                 Y = EAAs_vars[i])
+    CHLD5_X7[i,] <- rlts["CHLD5_X7",]
+    CHLD5_X33[i,] <- rlts["CHLD5_X33",]
+    CHLD5_NkF[i,] <- rlts["CHLD5_NkF",]
+    CHLD5_NO2[i,] <- rlts["CHLD5_NO2",]
+    CHLD5_SO2[i,] <- rlts["CHLD5_SO2",]
+}
+
+colnames(CHLD5_X7) = colnames(rlts)
+colnames(CHLD5_X33) = colnames(rlts)
+colnames(CHLD5_NkF) = colnames(rlts)
+colnames(CHLD5_NO2) = colnames(rlts)
+colnames(CHLD5_SO2) = colnames(rlts)
+
+rownames(CHLD5_X7) = EAAs_vars
+rownames(CHLD5_X33) = EAAs_vars
+rownames(CHLD5_NkF) = EAAs_vars
+rownames(CHLD5_NO2) = EAAs_vars
+rownames(CHLD5_SO2) = EAAs_vars
+
+CHLD5_X7$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CHLD5_X33$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CHLD5_NkF$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CHLD5_NO2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CHLD5_SO2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(CHLD5_X7, "X7")
+p2 <- make_forest_plot_lg(CHLD5_X33, "X33")
+p3 <- make_forest_plot_lg(CHLD5_NkF, "NkF")
+p4 <- make_forest_plot_lg(CHLD5_NO2, "NO2")
+p5 <- make_forest_plot_lg(CHLD5_SO2, "SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+
+for(j in 1:5){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each exposure prototype \n based on childhood pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+## Sensitivity analyses
+### Likelihood ratio (LR) test (single model)
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCHLD5)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCHLD5)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCHLD5)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+
+
+# Clusters based on model-based lifetime exposure estimates (clusCUM6)
+The file “LEX_clus CUM6.csv” has information on estimated cumulative pollutant exposures during the lifecourse. Estimates are available for 6 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:  
+
+CUM6_BC_NO2_PM – a cluster of BC, NO2, and PM  
+CUM6_PAH36 – a large cluster of 36 PAHs  
+CUM6_DlP – DlP only  
+CUM6_NkF – NkF only  
+CUM6_RET – retene only  
+CUM6_SO2 – SO2 only   
+ 
+
+## Summary the exposure estimates:
+```{r}
+summary(df %>% select(var_name_list$cluster_exp$clusCUM6))
+```
+
+## Primary analysis
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2}\\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_{10} * edu + \beta_{11} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$cluster_exp$clusCUM6)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Linear regression 
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2}\\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_{10} * edu + \beta_{11} * curStove + \epsilon
+\end{aligned}
+$$ 
+where $Y$ is one of the epigenetic age accelerations.  
+ 
+The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
+
+
+```{r linear_relation_cumFuel_mix, fig.width=6, fig.height=8}
+CUM6_BC_NO2_PM <- data.frame(matrix(NA, ncol = 7))
+CUM6_PAH36 <- data.frame(matrix(NA, ncol = 7))
+CUM6_DlP <- data.frame(matrix(NA, ncol = 7))
+CUM6_NkF <- data.frame(matrix(NA, ncol = 7))
+CUM6_RET <- data.frame(matrix(NA, ncol = 7))
+CUM6_SO2 <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression_exposure_prototype(X = unname(unlist(var_name_list$cluster_exp$clusCUM6)),
+                                                 Y = EAAs_vars[i])
+    CUM6_BC_NO2_PM[i,] <- rlts["CUM6_BC_NO2_PM",]
+    CUM6_PAH36[i,] <- rlts["CUM6_PAH36",]
+    CUM6_DlP[i,] <- rlts["CUM6_DlP",]
+    CUM6_NkF[i,] <- rlts["CUM6_NkF",]
+    CUM6_RET[i,] <- rlts["CUM6_RET",]
+    CUM6_SO2[i,] <- rlts["CUM6_SO2",]
+}
+
+colnames(CUM6_BC_NO2_PM) = colnames(rlts)
+colnames(CUM6_PAH36) = colnames(rlts)
+colnames(CUM6_DlP) = colnames(rlts)
+colnames(CUM6_NkF) = colnames(rlts)
+colnames(CUM6_RET) = colnames(rlts)
+colnames(CUM6_SO2) = colnames(rlts)
+
+rownames(CUM6_BC_NO2_PM) = EAAs_vars
+rownames(CUM6_PAH36) = EAAs_vars
+rownames(CUM6_DlP) = EAAs_vars
+rownames(CUM6_NkF) = EAAs_vars
+rownames(CUM6_RET) = EAAs_vars
+rownames(CUM6_SO2) = EAAs_vars
+
+CUM6_BC_NO2_PM$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUM6_PAH36$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUM6_DlP$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUM6_NkF$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUM6_RET$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+CUM6_SO2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(CUM6_BC_NO2_PM, "BC_NO2_PM")
+p2 <- make_forest_plot_lg(CUM6_PAH36, "PAH36")
+p3 <- make_forest_plot_lg(CUM6_DlP, "DlP")
+p4 <- make_forest_plot_lg(CUM6_NkF, "NkF")
+p5 <- make_forest_plot_lg(CUM6_RET, "RET")
+p6 <- make_forest_plot_lg(CUM6_SO2, "SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each exposure prototype \n based on lifetime pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+## Sensitivity analyses
+### Likelihood ratio (LR) test (single model)
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUM6)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$   
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUM6)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$cluster_exp$clusCUM6)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
 
 
 
