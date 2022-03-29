@@ -30,6 +30,171 @@ source('shared_commands.R')
 df <- read.csv("../data/data_cleaned.csv")
 ```
 
+
+```{r define_functions}
+library(lmtest)
+preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+  
+  form_full <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit_full <- lm(form_full, data = tmp)
+  form_reduced <- as.formula(paste0(Y," ~ ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit_reduced <- lm(form_reduced, data = tmp)
+  
+  lrtest <- lrtest(lmfit_full, lmfit_reduced)
+
+  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
+}
+
+preform_lmtest_simple <- function(Y, X, dat = df, log_trans_X = F) {
+  tmp <- dat
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+  
+  form_full <- as.formula(paste0(Y," ~ ", X_form))
+  lmfit_full <- lm(form_full, data = tmp)
+  form_reduced <- as.formula(paste0(Y," ~ 1"))
+  lmfit_reduced <- lm(form_reduced, data = tmp)
+  
+  lrtest <- lrtest(lmfit_full, lmfit_reduced)
+
+  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
+}
+
+
+preform_regression <- function(Y, X, log_trans_X = F, adjust_cfd = F) {
+  tmp <- df[!is.na(df[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  lmfit <- lm(form, data = tmp)
+  coef <- round(summary(lmfit)$coefficients[2,1],4)
+  coef_text <- as.character(coef)
+  std <- round(summary(lmfit)$coefficients[2,2],4)
+  std_text <- as.character(std)
+  sig_star <- ifelse(summary(lmfit)$coefficients[2,4]<0.001, "***",
+                ifelse(summary(lmfit)$coefficients[2,4]<0.01, "** ",
+                       ifelse(summary(lmfit)$coefficients[2,4]<0.05, "*  ", "   ")))
+  sig <- ifelse(summary(lmfit)$coefficients[2,4] <= 0.001, "<= 0.001",
+                ifelse(summary(lmfit)$coefficients[2,4] <= 0.01, "<= 0.01",
+                       ifelse(summary(lmfit)$coefficients[2,4] <= 0.05, "<= 0.05", "> 0.05")))
+  rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),
+                sig_star,
+                "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
+  cl_l <- coef - 1.96 * std
+  cl_u <- coef + 1.96 * std
+  return(c(rlt, coef, cl_l, cl_u, sig))
+}
+
+
+preform_regression_exposure_prototype <- function(X, Y, log_trans_X=F) {
+  
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+  
+  tmp <- tmp[tmp$Group == "LEX", ]
+
+  form <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
+  lmfit <- lm(form, data = tmp)
+
+  coefs <- as.data.frame(summary(lmfit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval, pval_BHadj) %>%
+    mutate(cl_lower = coefficient - 1.96 * std,
+           cl_upper = coefficient + 1.96 * std,
+           p_val = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
+  
+  return(coefs)
+}
+
+
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+make_forest_plot <- function(df, exposure){
+  df$p_val <- as.factor(df$p_val)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
+    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="Change in year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=8.6, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=8),
+          axis.title.x = element_text(size=8),
+          axis.text = element_text(size=7)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color)
+
+  return(p)
+}
+
+make_forest_plot_lg <- function(df, exposure){
+  df$p_val <- as.factor(df$p_val)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
+    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="Change in year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=15, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=10)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color)
+
+  return(p)
+}
+
+
+options(scipen = 999)
+```
+
 # Current (self-reported) fuel type 
 The numbers of observations with each current fuel type:
 ```{r}
@@ -59,30 +224,6 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results: 
 
-```{r}
-library(lmtest)
-preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
-  tmp <- df
-  for(i in 1:length(X)){
-    X_i <- X[i]
-    tmp <- tmp[!is.na(tmp[,X_i]),]
-    if(log_trans_X) {
-      tmp[,X_i] <- log(tmp[,X_i])
-    }
-  }
-  
-  X_form <- paste(X, collapse  = " + ")
-  
-  form_full <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
-  lmfit_full <- lm(form_full, data = tmp)
-  form_reduced <- as.formula(paste0(Y," ~ ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
-  lmfit_reduced <- lm(form_reduced, data = tmp)
-  
-  lrtest <- lrtest(lmfit_full, lmfit_reduced)
-
-  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
-}
-```
 
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
@@ -164,56 +305,7 @@ preform_regression_curFuel_mix <- function(Y) {
 }
 ```
 
-```{r}
-sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
 
-make_forest_plot <- function(df, exposure){
-  df$p_val <- as.factor(df$p_val)
-  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
-    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
-    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
-    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
-    # ylim(c(-2,2)) +  # not working
-    coord_flip() +  # flip coordinates (puts labels on y axis)
-    labs(x=expression(log[2]-PFAS))+
-    labs(y="Change in year") +
-    ggtitle(exposure)+
-    theme(plot.title = element_text(size=8.6, hjust = 0.5),
-          axis.title.y = element_blank(),
-          panel.grid.major.x = element_blank(),
-          axis.text.y = element_text(size=8),
-          axis.title.x = element_text(size=8),
-          axis.text = element_text(size=7)) +
-    scale_color_manual(values = sig_color) +
-    scale_fill_manual(values = sig_color)
-
-  return(p)
-}
-
-make_forest_plot_lg <- function(df, exposure){
-  df$p_val <- as.factor(df$p_val)
-  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=cl_lower, ymax=cl_upper)) +
-    geom_point(shape=24, size=2, aes(col = p_val, fill = p_val)) +
-    geom_errorbar(shape=24, width=0.3, aes(col = p_val)) +
-    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
-    # ylim(c(-2,2)) +  # not working
-    coord_flip() +  # flip coordinates (puts labels on y axis)
-    labs(x=expression(log[2]-PFAS))+
-    labs(y="Change in year") +
-    ggtitle(exposure)+
-    theme(plot.title = element_text(size=15, hjust = 0.5),
-          axis.title.y = element_blank(),
-          panel.grid.major.x = element_blank(),
-          axis.text.y = element_text(size=10),
-          axis.title.x = element_text(size=10),
-          axis.text = element_text(size=10)) +
-    scale_color_manual(values = sig_color) +
-    scale_fill_manual(values = sig_color)
-
-  return(p)
-}
-
-```
 
 ```{r linear_relation_curFuel_mix, fig.width=7, fig.height=6}
 fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
@@ -268,29 +360,6 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results: 
 
-```{r}
-preform_lmtest_simple <- function(Y, X, dat = df, log_trans_X = F) {
-  tmp <- dat
-  for(i in 1:length(X)){
-    X_i <- X[i]
-    tmp <- tmp[!is.na(tmp[,X_i]),]
-    if(log_trans_X) {
-      tmp[,X_i] <- log(tmp[,X_i])
-    }
-  }
-  
-  X_form <- paste(X, collapse  = " + ")
-  
-  form_full <- as.formula(paste0(Y," ~ ", X_form))
-  lmfit_full <- lm(form_full, data = tmp)
-  form_reduced <- as.formula(paste0(Y," ~ 1"))
-  lmfit_reduced <- lm(form_reduced, data = tmp)
-  
-  lrtest <- lrtest(lmfit_full, lmfit_reduced)
-
-  return(round(lrtest$`Pr(>Chisq)`, 4)[2])
-}
-```
 
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
@@ -800,7 +869,15 @@ CUR6_SO2 – SO2 only
 
 ## Summary the exposure estimates:
 ```{r}
-summary(df %>% select(var_name_list$cluster_exp$clusCUR6))
+# summary(df %>% select(var_name_list$cluster_exp$clusCUR6))
+df %>% 
+  select(var_name_list$cluster_exp$clusCUR6, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
 ```
 
 ## Primary analysis
@@ -853,41 +930,6 @@ where $Y$ is one of the epigenetic age accelerations.
 The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
 
 
-```{r}
-preform_regression_exposure_prototype <- function(X, Y, log_trans_X=F) {
-  
-  tmp <- df
-  for(i in 1:length(X)){
-    X_i <- X[i]
-    tmp <- tmp[!is.na(tmp[,X_i]),]
-    if(log_trans_X) {
-      tmp[,X_i] <- log(tmp[,X_i])
-    }
-  }
-  
-  X_form <- paste(X, collapse  = " + ")
-  
-  tmp <- tmp[tmp$Group == "LEX", ]
-
-  form <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + "), " + curStove"))
-  lmfit <- lm(form, data = tmp)
-
-  coefs <- as.data.frame(summary(lmfit)$coefficients)
-  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
-  coefs$pval_BHadj <- p.adjust(coefs$pval, method = "BH")
-
-  coefs <- coefs %>%
-    select(coefficient, std, pval, pval_BHadj) %>%
-    mutate(cl_lower = coefficient - 1.96 * std,
-           cl_upper = coefficient + 1.96 * std,
-           p_val = ifelse(pval <= 0.001, "<= 0.001",
-                        ifelse(pval <= 0.01, "<= 0.01",
-                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
-    select(coefficient, std, cl_lower, cl_upper, pval, p_val, pval_BHadj)
-  
-  return(coefs)
-}
-```
 
 
 ```{r linear_relation_clusCUR6_mix, fig.width=8, fig.height=7}
@@ -1035,7 +1077,15 @@ CHLD5_SO2 – SO2 only
 
 ## Summary the exposure estimates:
 ```{r}
-summary(df %>% select(var_name_list$cluster_exp$clusCHLD5))
+#summary(df %>% select(var_name_list$cluster_exp$clusCHLD5))
+df %>% 
+  select(var_name_list$cluster_exp$clusCHLD5, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
 ```
 
 ## Primary analysis
@@ -1229,7 +1279,15 @@ CUM6_SO2 – SO2 only
 
 ## Summary the exposure estimates:
 ```{r}
-summary(df %>% select(var_name_list$cluster_exp$clusCUM6))
+# summary(df %>% select(var_name_list$cluster_exp$clusCUM6))
+df %>% 
+  select(var_name_list$cluster_exp$clusCUM6, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
 ```
 
 ## Primary analysis
@@ -1430,7 +1488,15 @@ MEAS6_ NO2_SO2 – NO2, and SO2
 
 ## Summary the exposure estimates:
 ```{r}
-summary(df %>% select(var_name_list$cluster_exp$clusMEAS6))
+# summary(df %>% select(var_name_list$cluster_exp$clusMEAS6))
+df %>% 
+  select(var_name_list$cluster_exp$clusMEAS6, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
 ```
 
 ## Primary analysis
@@ -1483,7 +1549,7 @@ where $Y$ is one of the epigenetic age accelerations.
 The estimations of $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ with given $Y$ are shown below. The $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, $\beta_5$, and $\beta_6$ can be interpreted as "the expected change of Y if increase one unit of given exposure prototype, while holding other variables constant".
 
 
-```{r linear_relation_clusCUR6_mix, fig.width=8, fig.height=7}
+```{r linear_relation_clusMEAS6_mix, fig.width=8, fig.height=7}
 MEAS6_BC_PM_RET <- data.frame(matrix(NA, ncol = 7))
 MEAS6_X31 <- data.frame(matrix(NA, ncol = 7))
 MEAS6_X5 <- data.frame(matrix(NA, ncol = 7))
@@ -1633,7 +1699,15 @@ URI5_CHR – Baa_Chrysene only
 
 ## Summary the exposure estimates:
 ```{r}
-summary(df %>% select(var_name_list$cluster_exp$clusURI5))
+# summary(df %>% select(var_name_list$cluster_exp$clusURI5))
+df %>% 
+  select(var_name_list$cluster_exp$clusMEAS6, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
 ```
 
 ## Primary analysis
@@ -1817,41 +1891,114 @@ print(round(p_vals_mat,4))
 
 
 # Ambient Exposure
-## Linear regression (simple model)
+## Summary the exposure estimates:
+```{r}
+df %>% 
+  select(var_name_list$ambient_exp, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
+```
+
+
+## Primary analysis
+### Linear regression for each ambient exposure measurement (mix model)
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *X\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \beta_6 * curStove + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements.
+
+The estimations of $\beta_1$ with given $Y$ and $X$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in X while holding other variables constant".
+```{r linear_reg_coef_ambient, fig.width=10, fig.height=16}
+lm_coef_ambient <- data.frame()
+lm_coef_ambient_plots <- list()
+
+for(j in 1:length(ambient_exp_vars)){
+  plot_df <- data.frame(matrix(NA, ncol = 4))
+  for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression(Y = EAAs_vars[i], X = ambient_exp_vars[j], adjust_cfd = T)
+    lm_coef_ambient[i,j] <- rlts[1]
+    plot_df[i,] <- rlts[c(2,3,4,5)]
+  }
+  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
+  rownames(plot_df) <- EAAs_vars
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
+  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
+
+  pj <- make_forest_plot(plot_df, ambient_exp_label[j])
+  lm_coef_ambient_plots[[j]] = pj
+}
+
+
+lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
+colnames(lm_coef_ambient) <- ambient_exp_names
+rownames(lm_coef_ambient) <- c(EAAs_names, "")
+
+
+grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
+             top = textGrob(paste("Ambient Exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{bap} + \beta_2 * \text{pm25} + \beta_3 * \text{ANY} + \beta_4 * \text{BPE} + \beta_5 * \text{BaA} \\
+  & + \beta_6 * \text{BbF} + \beta_7 * \text{BkF} + \beta_8 * \text{CHR} + \beta_9 * \text{DBA} + \beta_{10} * \text{FLT} \\ 
+  & + \beta_{11} * \text{FLU} + \beta_{12} * \text{IPY} + \beta_{13} * \text{NAP} + \beta_{14} * \text{PHE} + \beta_{15} * \text{PYR} \\ 
+  & + \beta_{16} * county + \beta_{17} * BMI + \beta_{18} * ses + \beta_{19} * edu + \beta_{20} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$ambient_exp)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+## Sensitivity analysis 
+### Linear regression for each ambient exposure measurement (simple model)
 
 In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 *X + \epsilon$$
 where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the ambient exposure measurements.
 
 The estimations of $\beta_1$ with given $Y$ and $X$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in X while holding other variables constant".
-```{r}
-preform_regression <- function(Y, X, log_trans_X = F) {
-  tmp <- df[!is.na(df[,X]),]
-  if(log_trans_X) {
-    tmp[,X] <- log(tmp[,X])
-  }
-  form <- as.formula(paste0(Y,"~",X))
-  lmfit <- lm(form, data = tmp)
-  coef <- round(summary(lmfit)$coefficients[2,1],4)
-  coef_text <- as.character(coef)
-  std <- round(summary(lmfit)$coefficients[2,2],4)
-  std_text <- as.character(std)
-  sig_star <- ifelse(summary(lmfit)$coefficients[2,4]<0.001, "***",
-                ifelse(summary(lmfit)$coefficients[2,4]<0.01, "** ",
-                       ifelse(summary(lmfit)$coefficients[2,4]<0.05, "*  ", "   ")))
-  sig <- ifelse(summary(lmfit)$coefficients[2,4] <= 0.001, "<= 0.001",
-                ifelse(summary(lmfit)$coefficients[2,4] <= 0.01, "<= 0.01",
-                       ifelse(summary(lmfit)$coefficients[2,4] <= 0.05, "<= 0.05", "> 0.05")))
-  rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),
-                sig_star,
-                "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
-  cl_l <- coef - 1.96 * std
-  cl_u <- coef + 1.96 * std
-  return(c(rlt, coef, cl_l, cl_u, sig))
-}
-
-
-options(scipen = 999)
-```
 
 ```{r linear_reg_coef_ambient_simple, fig.width=10, fig.height=16}
 lm_coef_ambient <- data.frame()
@@ -1896,12 +2043,215 @@ grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
 # print(lm_coef_ambient)
 ```
 
+
+### Likelihood ratio (LR) test (single model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{bap} + \beta_2 * \text{pm25} + \beta_3 * \text{ANY} + \beta_4 * \text{BPE} + \beta_5 * \text{BaA} \\
+  & + \beta_6 * \text{BbF} + \beta_7 * \text{BkF} + \beta_8 * \text{CHR} + \beta_9 * \text{DBA} + \beta_{10} * \text{FLT} \\ 
+  & + \beta_{11} * \text{FLU} + \beta_{12} * \text{IPY} + \beta_{13} * \text{NAP} + \beta_{14} * \text{PHE} + \beta_{15} * \text{PYR} \\ 
+  & + \epsilon
+\end{aligned}
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
 ```{r}
-write.csv(lm_coef_ambient, "../data/2.analysis/lm_coefficients_ambient.csv")
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$ambient_exp)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
 ```
 
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{bap} + \beta_2 * \text{pm25} + \beta_3 * \text{ANY} + \beta_4 * \text{BPE} + \beta_5 * \text{BaA} \\
+  & + \beta_6 * \text{BbF} + \beta_7 * \text{BkF} + \beta_8 * \text{CHR} + \beta_9 * \text{DBA} + \beta_{10} * \text{FLT} \\ 
+  & + \beta_{11} * \text{FLU} + \beta_{12} * \text{IPY} + \beta_{13} * \text{NAP} + \beta_{14} * \text{PHE} + \beta_{15} * \text{PYR} \\ 
+  & + \epsilon
+\end{aligned}
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$ambient_exp)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{bap} + \beta_2 * \text{pm25} + \beta_3 * \text{ANY} + \beta_4 * \text{BPE} + \beta_5 * \text{BaA} \\
+  & + \beta_6 * \text{BbF} + \beta_7 * \text{BkF} + \beta_8 * \text{CHR} + \beta_9 * \text{DBA} + \beta_{10} * \text{FLT} \\ 
+  & + \beta_{11} * \text{FLU} + \beta_{12} * \text{IPY} + \beta_{13} * \text{NAP} + \beta_{14} * \text{PHE} + \beta_{15} * \text{PYR} \\ 
+  & + \epsilon
+\end{aligned}
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$ambient_exp)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+
+
+
+
+
 # Urinary Measurements
-## Linear regression (simple model)
+## Summary the exposure estimates:
+```{r}
+df %>% 
+  select(var_name_list$urinary_exp, curFuel) %>%
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
+```
+
+
+## Primary analysis
+### Linear regression for each urinary exposure measurement (mix model)
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *X\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \beta_6 * curStove + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the urinary exposure measurements.
+
+The estimations of $\beta_1$ with given $Y$ and $X$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in X while holding other variables constant".
+```{r linear_reg_coef_urinary, fig.width=10, fig.height=10}
+lm_coef_ambient <- data.frame()
+lm_coef_ambient_plots <- list()
+
+for(j in 1:length(urinary_exp_vars)){
+  plot_df <- data.frame(matrix(NA, ncol = 4))
+  for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression(Y = EAAs_vars[i], X = urinary_exp_vars[j], adjust_cfd = T)
+    lm_coef_ambient[i,j] <- rlts[1]
+    plot_df[i,] <- rlts[c(2,3,4,5)]
+  }
+  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
+  rownames(plot_df) <- EAAs_vars
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
+  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
+
+  pj <- make_forest_plot(plot_df, ambient_exp_label[j])
+  lm_coef_ambient_plots[[j]] = pj
+}
+
+
+lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
+colnames(lm_coef_ambient) <- urinary_exp_names
+rownames(lm_coef_ambient) <- c(EAAs_names, "")
+
+
+grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
+             top = textGrob(paste("Urinary Exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{Benzanthracene_Chrysene} + \beta_2 * \text{Naphthalene} \\
+  & + \beta_3 * \text{2.Methylnaphthalene} + \beta_4 * \text{1.Methylnaphthalene} \\
+  & + \beta_5 * \text{Acenaphthene }+ \beta_6 * \text{Phenanthrene_Anthracene} \\
+  & + \beta_7 * \text{Phenanthrene_Anthracene} + \beta_8 * \text{Fluoranthene} + \beta_9 * \text{Pyrene} \\ 
+  & + \beta_{10} * county + \beta_{11} * BMI + \beta_{12} * ses + \beta_{13} * edu + \beta_{14} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results: 
+
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$urinary_exp)))
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+## Sensitivity analysis 
+### Linear regression for each ambient exposure measurement (simple model)
 In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 *X + \epsilon$$
 where $Y$ is one of the epigenetic age accelerations, and $X$ is one of the urinary measurements.
 
@@ -1938,22 +2288,112 @@ rownames(lm_coef_urine) <- c(EAAs_names, "")
 
 grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
              top = textGrob(paste("Urinary Measurements"), gp=gpar(fontsize=15, fontface = 'bold')))
-
-# for(j in 1:length(urinary_exp_vars)){
-#   lm_coef_urine_plots[[j]] <- lm_coef_urine_plots[[j]] + ylim(c(-1.5, 3))
-# }
-# grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
-#              top = textGrob(paste("Urinary Measurements (same range)"), gp=gpar(fontsize=15, fontface = 'bold')))
-# 
-# cat("X: Urinary Measurements:")
-# print(lm_coef_urine)
-
 ```
 
 
+### Likelihood ratio (LR) test (single model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{Benzanthracene_Chrysene} + \beta_2 * \text{Naphthalene} \\
+  & + \beta_3 * \text{2.Methylnaphthalene} + \beta_4 * \text{1.Methylnaphthalene} \\
+  & + \beta_5 * \text{Acenaphthene }+ \beta_6 * \text{Phenanthrene_Anthracene} \\
+  & + \beta_7 * \text{Phenanthrene_Anthracene} + \beta_8 * \text{Fluoranthene} + \beta_9 * \text{Pyrene} \\ 
+  & + \epsilon
+\end{aligned}
+$$
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
 ```{r}
-write.csv(lm_coef_urine, "../data/2.analysis/lm_coefficients_urine.csv")
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$urinary_exp)),
+                                      dat = df)
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
 ```
+
+### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{Benzanthracene_Chrysene} + \beta_2 * \text{Naphthalene} \\
+  & + \beta_3 * \text{2.Methylnaphthalene} + \beta_4 * \text{1.Methylnaphthalene} \\
+  & + \beta_5 * \text{Acenaphthene }+ \beta_6 * \text{Phenanthrene_Anthracene} \\
+  & + \beta_7 * \text{Phenanthrene_Anthracene} + \beta_8 * \text{Fluoranthene} + \beta_9 * \text{Pyrene} \\ 
+  & + \epsilon
+\end{aligned}
+$$
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$urinary_exp)),
+                                      dat = df[df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{Benzanthracene_Chrysene} + \beta_2 * \text{Naphthalene} \\
+  & + \beta_3 * \text{2.Methylnaphthalene} + \beta_4 * \text{1.Methylnaphthalene} \\
+  & + \beta_5 * \text{Acenaphthene }+ \beta_6 * \text{Phenanthrene_Anthracene} \\
+  & + \beta_7 * \text{Phenanthrene_Anthracene} + \beta_8 * \text{Fluoranthene} + \beta_9 * \text{Pyrene} \\ 
+  & + \epsilon
+\end{aligned}
+$$
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                      X = unname(unlist(var_name_list$urinary_exp)),
+                                      dat = df[df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+
+
+
 
 
 
