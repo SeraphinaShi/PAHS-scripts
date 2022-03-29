@@ -474,7 +474,7 @@ fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names
 fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
 p1 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky (reference)")
-p2 <- make_forest_plot_lg(fueltype_mix_mean, "Smokeless")
+p2 <- make_forest_plot_lg(fueltype_mix_mean, "Mix")
 
 plot_list <- list(p1, p2)
 
