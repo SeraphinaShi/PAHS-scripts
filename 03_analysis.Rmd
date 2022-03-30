@@ -1,5 +1,5 @@
 ---
-title: "Analysis"
+title: "PASH Analysis"
 author: "Seraphina Shi"
 output:
   html_document:
@@ -194,6 +194,8 @@ make_forest_plot_lg <- function(df, exposure){
 
 options(scipen = 999)
 ```
+
+In this file, we presented the results from analyses of exposures against computed epigenetic age accelerations (EAA) calculated using DNA methylation data by different methods. For each exposure, we conducted both primary analyses (likelihood ratio tests and linear regressions, adjusted for confounders) and sensitivity analyses (likelihood ratio tests and/or linear regressions limited to certain fuel users, not adjusted for confounders). In addition to what's included in the analysis plan, we also analyzed ambient and urinary exposures. 
 
 # Current (self-reported) fuel type 
 The numbers of observations with each current fuel type:
