@@ -89,16 +89,17 @@ preform_regression <- function(Y, X, log_trans_X = F, adjust_cfd = F) {
                  paste0(Y,"~",X))
   form <- as.formula(form)
   lmfit <- lm(form, data = tmp)
-  coef <- round(summary(lmfit)$coefficients[2,1],4)
-  coef_text <- as.character(coef)
-  std <- round(summary(lmfit)$coefficients[2,2],4)
-  std_text <- as.character(std)
-  sig_star <- ifelse(summary(lmfit)$coefficients[2,4]<0.001, "***",
-                ifelse(summary(lmfit)$coefficients[2,4]<0.01, "** ",
-                       ifelse(summary(lmfit)$coefficients[2,4]<0.05, "*  ", "   ")))
-  sig <- ifelse(summary(lmfit)$coefficients[2,4] <= 0.001, "<= 0.001",
-                ifelse(summary(lmfit)$coefficients[2,4] <= 0.01, "<= 0.01",
-                       ifelse(summary(lmfit)$coefficients[2,4] <= 0.05, "<= 0.05", "> 0.05")))
+  coef <- summary(lmfit)$coefficients[2,1]
+  coef_text <- as.character(round(coef,4))
+  std <- summary(lmfit)$coefficients[2,2]
+  std_text <- as.character(round(std,4))
+  p_val <- summary(lmfit)$coefficients[2,4]
+  sig_star <- ifelse(p_val<0.001, "***",
+                ifelse(p_val<0.01, "** ",
+                       ifelse(p_val<0.05, "*  ", "   ")))
+  sig <- ifelse(p_val <= 0.001, "<= 0.001",
+                ifelse(p_val <= 0.01, "<= 0.01",
+                       ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))
   rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),
                 sig_star,
                 "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
@@ -994,7 +995,14 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ## Sensitivity analyses
 ### Likelihood ratio (LR) test (single model)
 
-Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 \\
+  & + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2}\\
+  & + \epsilon
+\end{aligned}
+$$
 Nested model: $$Y = \beta_0 + \epsilon$$  
 
 $H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
@@ -1017,7 +1025,13 @@ print(round(p_vals_mat,4))
 
 ### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
 
-Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Full model: $$
+\begin{aligned}
+  Y = & \beta_0 \\
+  & + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2}\\
+  & + \epsilon
+\end{aligned}
+$$ 
 Nested model: $$Y = \beta_0 + \epsilon$$  
 
 $H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
@@ -1041,7 +1055,13 @@ print(round(p_vals_mat,4))
 
 ### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
 
-Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
+Full model: $$
+\begin{aligned}
+  Y = & \beta_0 \\
+  & + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2}\\
+  & + \epsilon
+\end{aligned}
+$$
 Nested model: $$Y = \beta_0 + \epsilon$$  
 
 $H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
@@ -1602,7 +1622,7 @@ plot_list <- list(p1, p2, p3, p4, p5, p6)
 
 
 for(j in 1:6){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-7, 7))
 }
 grid.arrange(grobs = plot_list,  ncol = 2,
              top = textGrob(paste("Estimated Effect of each exposure prototype \n based on pollutant measurements during each visit"), gp=gpar(fontsize=15, fontface = 'bold')))
@@ -1611,7 +1631,8 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ## Sensitivity analyses
 ### Likelihood ratio (LR) test (single model)
 
-Full model: $$Y = & \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
+
 Nested model: $$Y = \beta_0 + \epsilon$$  
 
 $H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
@@ -1658,7 +1679,7 @@ print(round(p_vals_mat,4))
 
 ### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
 
-Full model: $$Y = & \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
+Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
 
 $H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
@@ -2195,7 +2216,7 @@ for(j in 1:length(urinary_exp_vars)){
   plot_df$cl_lower = as.numeric(plot_df$cl_lower)
   plot_df$cl_upper = as.numeric(plot_df$cl_upper)
 
-  pj <- make_forest_plot(plot_df, ambient_exp_label[j])
+  pj <- make_forest_plot(plot_df, urinary_exp_label[j])
   lm_coef_ambient_plots[[j]] = pj
 }
 
