@@ -1934,7 +1934,7 @@ df_subs <- list("df_sub1" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 1) | (! 
 `r length(dup_sbjctD)` out of `r length(unique(df$SbjctD))` subjects have been visited twice and have two sets of estimated epigenetic ages, but we only have one 5MC measurement for each subject. To address this issue, we conducted each analysis twice using the set of estimated epigenetic ages from the first visit and then the set from the second visit for these `r length(dup_sbjctD)` subjects. 
 
 ## Summary the exposure estimates:
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+
 ```{r}
 df_subs[[1]] %>% 
   select(PCH_5MC, curFuel) %>% 
@@ -1946,17 +1946,7 @@ df_subs[[1]] %>%
   add_overall()
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
-```{r}
-df_subs[[2]] %>% 
-  select(PCH_5MC, curFuel) %>% 
-  tbl_summary(by = curFuel,
-              # type = all_continuous() ~ "continuous2",
-              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
-              digits = list(  ~ c(2, 1, 1)),
-              missing_text = "(Missing)") %>% 
-  add_overall()
-```
+
 
 ## Primary analysis
 
@@ -2004,12 +1994,12 @@ colnames(lm_coef_ambient) <- "PCH_5MC"
 rownames(lm_coef_ambient) <- c(EAAs_names, "")
 ```
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r linear_reg_coef_5MC_1, fig.height=3, fig.width=4}
 lm_coef_ambient_plots[[1]]
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r linear_reg_coef_5MC_2, fig.height=3, fig.width=4}
 lm_coef_ambient_plots[[2]]
 ```
@@ -2035,7 +2025,7 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results:   
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
@@ -2050,7 +2040,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
@@ -2109,12 +2099,12 @@ colnames(lm_coef_ambient) <- "PCH_5MC"
 rownames(lm_coef_ambient) <- c(EAAs_names, "")
 ```
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r linear_reg_coef_5MC_simple_1, fig.height=3, fig.width=4}
 lm_coef_ambient_plots[[1]]
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r linear_reg_coef_5MC_simple_2, fig.height=3, fig.width=4}
 lm_coef_ambient_plots[[2]]
 ```
@@ -2132,7 +2122,7 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results: 
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
@@ -2147,12 +2137,12 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
     p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
-                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
                                    dat = df_subs[[2]])
 }
 p_vals_BHadj <- p.adjust(p_vals, method = "BH")
@@ -2175,7 +2165,7 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results: 
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
@@ -2190,12 +2180,12 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
     p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
-                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
                                    dat = df_subs[[2]][df$curFuel %in% c("Smokeles", "Smoky"), ])
 }
 p_vals_BHadj <- p.adjust(p_vals, method = "BH")
@@ -2220,7 +2210,7 @@ $H_A$: The full model fits the data significantly better than the nested model. 
 
 P-values results: 
 
-Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **first** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
@@ -2235,12 +2225,12 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+For these `r length(dup_sbjctD)` subjects, using the estimated epigenetic ages from the **second** visits:
 ```{r}
 p_vals <- rep(NA, length(EAAs_vars))
 for(i in 1:length(EAAs_vars)){
     p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
-                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
                                    dat = df_subs[[2]][df$curFuel %in% c("Smoky"), ])
 }
 p_vals_BHadj <- p.adjust(p_vals, method = "BH")
