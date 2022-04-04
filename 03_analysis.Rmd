@@ -27,14 +27,14 @@ source('shared_commands.R')
 ```
 
 ```{r}
-df <- read.csv("../data/data_cleaned.csv")
+df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
 ```
 
 
 ```{r define_functions}
 library(lmtest)
-preform_lmtest_mix <- function(Y, X, log_trans_X = F) {
-  tmp <- df
+preform_lmtest_mix <- function(Y, X, log_trans_X = F, dat = df) {
+  tmp <- dat
   for(i in 1:length(X)){
     X_i <- X[i]
     tmp <- tmp[!is.na(tmp[,X_i]),]
@@ -78,8 +78,8 @@ preform_lmtest_simple <- function(Y, X, dat = df, log_trans_X = F) {
 }
 
 
-preform_regression <- function(Y, X, log_trans_X = F, adjust_cfd = F) {
-  tmp <- df[!is.na(df[,X]),]
+preform_regression <- function(Y, X, log_trans_X = F, adjust_cfd = F, dat = df) {
+  tmp <- dat[!is.na(dat[,X]),]
   if(log_trans_X) {
     tmp[,X] <- log(tmp[,X])
   }
@@ -353,7 +353,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 Limit the analyses in the primary analysis to include only a single observation from each subject (no need for a mixed model). The rationale for this is that it is not so easy to obtain unbiased p-values from a mixed model for FDR testing. This can be remediated during FDR testing but would be good to check.
 
 Full model: $$Y = \beta_0 + \beta_1 * I(\text{Smokeles}) + \beta_2 * I(\text{Wood_and_or_Plant}) + \epsilon$$
@@ -560,7 +560,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: $$Y = \beta_0 + \beta_1 * I(\text{Mix}) + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -777,7 +777,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 Limit the analyses in the primary analysis to include only a single observation from each subject (no need for a mixed model). The rationale for this is that it is not so easy to obtain unbiased p-values from a mixed model for FDR testing. This can be remediated during FDR testing but would be good to check.
 
 Full model: $$Y = \beta_0 + \beta_1 * I(\text{Wood}) + \beta_2 * I(\text{Smokeles}) + \beta_3 * I(\text{Mix}) + \epsilon$$
@@ -993,7 +993,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ```
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: 
 $$
@@ -1023,7 +1023,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: $$
 \begin{aligned}
@@ -1053,7 +1053,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: $$
 \begin{aligned}
@@ -1212,7 +1212,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ```
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1235,7 +1235,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1259,7 +1259,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{X7} + \beta_2 * \text{X33} + \beta_3 * \text{NkF} + \beta_4 * \text{NO2} + \beta_5 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1420,7 +1420,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ```
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1443,7 +1443,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$   
@@ -1467,7 +1467,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_NO2_PM} + \beta_2 * \text{PAH36} + \beta_3 * \text{DlP} + \beta_4 * \text{NkF} + \beta_5 * \text{RET} + \beta_6 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1629,7 +1629,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ```
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
 
@@ -1653,7 +1653,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PAH6} + \beta_2 * \text{PAH31} + \beta_3 * \text{NkF} + \beta_4 * \text{PM_RET} + \beta_5 * \text{NO2} + \beta_6 * \text{SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1677,7 +1677,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{BC_PM_RET} + \beta_2 * \text{X31} + \beta_3 * \text{X5} + \beta_4 * \text{DlP} + \beta_5 * \text{NkF} + \beta_6 * \text{NO2_SO2} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1835,7 +1835,7 @@ grid.arrange(grobs = plot_list,  ncol = 2,
 ```
 
 ## Sensitivity analyses
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1858,7 +1858,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1882,7 +1882,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: $$Y = \beta_0 + \beta_1 * \text{NAP_1M_2M} + \beta_2 * \text{ACE} + \beta_3 * \text{FLU_PHE} + \beta_4 * \text{PYR} + \beta_5 * \text{CHR} + \epsilon$$  
 Nested model: $$Y = \beta_0 + \epsilon$$  
@@ -1906,6 +1906,349 @@ print(round(p_vals_mat,4))
 ```
 
 
+
+
+
+
+
+
+
+
+# 5-methylchrysene (5MC)
+
+```{r get_5MC_data}
+df$SbjctD[is.na(df$SbjctD)] <- substr(df$SID[is.na(df$SbjctD)], 5, 7)
+df$Visit[is.na(df$Visit)] <- substr(df$SID[is.na(df$Visit)], 4, 4)
+
+df_5MC <- read.csv("../data/new_exposure_files/PAH31_5MC.csv")
+names(df_5MC)[2] <- "PCH_5MC"
+df <- merge(df, df_5MC, by = "SbjctD", all.x=T)
+
+var_name_list$PCH_5MC <- "PCH_5MC"
+
+dup_sbjctD <- df$SbjctD[duplicated(df$SbjctD)]
+df_subs <- list("df_sub1" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 1) | (! df$SbjctD %in% dup_sbjctD),],
+                "df_sub2" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 2) | (! df$SbjctD %in% dup_sbjctD),])
+```
+
+`r length(dup_sbjctD)` out of `r length(unique(df$SbjctD))` subjects have been visited twice and have two sets of estimated epigenetic ages, but we only have one 5MC measurement for each subject. To address this issue, we conducted each analysis twice using the set of estimated epigenetic ages from the first visit and then the set from the second visit for these `r length(dup_sbjctD)` subjects. 
+
+## Summary the exposure estimates:
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+df_subs[[1]] %>% 
+  select(PCH_5MC, curFuel) %>% 
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+df_subs[[2]] %>% 
+  select(PCH_5MC, curFuel) %>% 
+  tbl_summary(by = curFuel,
+              # type = all_continuous() ~ "continuous2",
+              statistic=list(all_continuous() ~ "{median} ({p25}, {p75})"),
+              digits = list(  ~ c(2, 1, 1)),
+              missing_text = "(Missing)") %>% 
+  add_overall()
+```
+
+## Primary analysis
+
+### Linear regression (mix model)
+In the following section, we performed linear regression with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *5MC\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \beta_6 * curStove + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+The estimations of $\beta_1$ with given $Y$ and $5MC$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in 5MC while holding other variables constant".
+```{r linear_reg_coef_5MC, fig.width=3, fig.height=4}
+lm_coef_ambient <- data.frame()
+lm_coef_ambient_plots <- list()
+
+for(j in 1:2){
+  plot_df <- data.frame(matrix(NA, ncol = 4))
+  for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression(Y = EAAs_vars[i], 
+                              X = var_name_list$PCH_5MC, 
+                              adjust_cfd = T, 
+                              dat=df_subs[[j]])
+    lm_coef_ambient[i,j] <- rlts[1]
+    plot_df[i,] <- rlts[c(2,3,4,5)]
+  }
+  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
+  rownames(plot_df) <- EAAs_vars
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
+  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
+
+  pj <- make_forest_plot(plot_df, "5MC")
+  lm_coef_ambient_plots[[j]] = pj
+}
+
+
+lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
+colnames(lm_coef_ambient) <- "PCH_5MC"
+rownames(lm_coef_ambient) <- c(EAAs_names, "")
+```
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r linear_reg_coef_5MC_1, fig.height=3, fig.width=4}
+lm_coef_ambient_plots[[1]]
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r linear_reg_coef_5MC_2, fig.height=3, fig.width=4}
+lm_coef_ambient_plots[[2]]
+```
+
+### Likelihood ratio (LR) test (mix model)
+
+Full model: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * \text{5MC} \\
+  & + \beta_{2} * county + \beta_{3} * BMI + \beta_{4} * ses + \beta_{5} * edu + \beta_{6} * curStove + \epsilon
+\end{aligned}
+$$
+Nested model: 
+$$
+\begin{aligned}
+  Y = & \beta_0  \\
+  & + \beta_1 * county + \beta_2 * BMI + \beta_3 * ses + \beta_4 * edu + \beta_5 * curStove + \epsilon
+\end{aligned}
+$$
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.  
+
+P-values results:   
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
+                                   dat = df_subs[[1]])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_mix(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
+                                   dat = df_subs[[2]])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+## Sensitivity analysis
+### Linear regression(simple model)
+
+In the following section, we performed linear regression with equation $$Y = \beta_0 + \beta_1 * 5MC + \epsilon$$
+where $Y$ is one of the epigenetic age accelerations.
+
+The estimations of $\beta_1$ with given $Y$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in 5MC while holding other variables constant".
+
+
+The estimations of $\beta_1$ with given $Y$ and $5MC$ are shown below, which can be interpreted as "the mean of Y changes given a one-unit increase in 5MC while holding other variables constant".
+```{r linear_reg_coef_5MC_simple}
+lm_coef_ambient <- data.frame()
+lm_coef_ambient_plots <- list()
+
+for(j in 1:2){
+  plot_df <- data.frame(matrix(NA, ncol = 4))
+  for(i in 1:length(EAAs_vars)){
+    rlts = preform_regression(Y = EAAs_vars[i], 
+                              X = var_name_list$PCH_5MC, 
+                              adjust_cfd = F, 
+                              dat=df_subs[[j]])
+    lm_coef_ambient[i,j] <- rlts[1]
+    plot_df[i,] <- rlts[c(2,3,4,5)]
+  }
+  colnames(plot_df) <- c("coefficient", "cl_lower", "cl_upper", "p_val")
+  rownames(plot_df) <- EAAs_vars
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$cl_lower = as.numeric(plot_df$cl_lower)
+  plot_df$cl_upper = as.numeric(plot_df$cl_upper)
+
+  pj <- make_forest_plot(plot_df, "5MC")
+  lm_coef_ambient_plots[[j]] = pj
+}
+
+
+lm_coef_ambient[9,1] <- c("[P<0.001: ***; P<0.01: **; P<0.05: *]")
+colnames(lm_coef_ambient) <- "PCH_5MC"
+rownames(lm_coef_ambient) <- c(EAAs_names, "")
+```
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r linear_reg_coef_5MC_simple_1, fig.height=3, fig.width=4}
+lm_coef_ambient_plots[[1]]
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r linear_reg_coef_5MC_simple_2, fig.height=3, fig.width=4}
+lm_coef_ambient_plots[[2]]
+```
+
+
+### Likelihood ratio (LR) test (simple model)
+Full model: 
+$$
+Y = \beta_0 + \beta_1 * 5MC + \epsilon
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
+                                   dat = df_subs[[1]])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   dat = df_subs[[2]])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
+Full model: 
+$$
+Y = \beta_0 + \beta_1 * 5MC + \epsilon
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
+                                   dat = df_subs[[1]][df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   dat = df_subs[[2]][df$curFuel %in% c("Smokeles", "Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+
+
+
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
+Full model: 
+$$
+Y = \beta_0 + \beta_1 * 5MC + \epsilon
+$$  
+Nested model: $$Y = \beta_0 + \epsilon$$  
+
+$H_0$: The full model and the nested model fit the data equally well. Thus, you should use the nested model.   
+$H_A$: The full model fits the data significantly better than the nested model. Thus, you should use the full model.
+
+P-values results: 
+
+Using the set of estimated epigenetic ages from the **first** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$PCH_5MC)),
+                                   dat = df_subs[[1]][df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
+
+Using the set of estimated epigenetic ages from the **second** visits among these `r length(dup_sbjctD)` subjects.
+```{r}
+p_vals <- rep(NA, length(EAAs_vars))
+for(i in 1:length(EAAs_vars)){
+    p_vals[i] = preform_lmtest_simple(Y = EAAs_vars[i], 
+                                   X = unname(unlist(var_name_list$ambient_exp)),
+                                   dat = df_subs[[2]][df$curFuel %in% c("Smoky"), ])
+}
+p_vals_BHadj <- p.adjust(p_vals, method = "BH")
+p_vals_mat <- cbind(p_vals, p_vals_BHadj)
+rownames(p_vals_mat) <- EAAs_names
+
+print(round(p_vals_mat,4))
+```
 
 
 
@@ -2067,7 +2410,7 @@ grid.arrange(grobs = lm_coef_ambient_plots,  ncol = 3,
 ```
 
 
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: 
 $$
@@ -2098,7 +2441,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: 
 $$
@@ -2130,7 +2473,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: 
 $$
@@ -2314,7 +2657,7 @@ grid.arrange(grobs = lm_coef_urine_plots,  ncol = 3,
 ```
 
 
-### Likelihood ratio (LR) test (single model)
+### Likelihood ratio (LR) test (simple model)
 
 Full model: 
 $$
@@ -2346,7 +2689,7 @@ rownames(p_vals_mat) <- EAAs_names
 print(round(p_vals_mat,4))
 ```
 
-### Likelihood ratio (LR) test (single model) with subjects using only smoky or smokeless coal 
+### Likelihood ratio (LR) test (simple model) with subjects using only smoky or smokeless coal 
 
 Full model: 
 $$
@@ -2379,7 +2722,7 @@ print(round(p_vals_mat,4))
 ```
 
 
-### Likelihood ratio (LR) test (single model) with subjects only using smoky coal
+### Likelihood ratio (LR) test (simple model) with subjects only using smoky coal
 
 Full model: 
 $$
