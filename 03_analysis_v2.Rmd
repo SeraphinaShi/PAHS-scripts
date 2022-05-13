@@ -299,7 +299,7 @@ perform_group_gee <- function(X, adjust_cfd = F, var_name = NA){
 
 
 
-preform_gee_exposure_prototype <- function(X, Y, log_trans_X=F) {
+preform_gee_exposure_prototype <- function(X, Y, adjust_cfd = T, log_trans_X=F) {
   tmp <- df
   for(i in 1:length(X)){
     X_i <- X[i]
@@ -310,7 +310,11 @@ preform_gee_exposure_prototype <- function(X, Y, log_trans_X=F) {
   }
   
   X_form <- paste(X, collapse  = " + ")
-  form <- as.formula(paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")))
+
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X_form))
+  form <- as.formula(form)
   
   geefit <- geeglm(formula = form, 
                 data = tmp,
@@ -1201,11 +1205,12 @@ Results:
 rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUR6, adjust_cfd = T)
 
 for(j in 1:length(rlts_gee[[2]])){
-  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-2, 2))
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
 }
 
 grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
-             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
 ```
 ```{r}
 cat("The estimated effects:")
@@ -1243,7 +1248,8 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUR6,
-                                          Y = var_name_list$EEAs[i])
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -1284,7 +1290,7 @@ p6 <- make_forest_plot_lg(coef6, "CUR6_SO2")
 plot_list <- list(p1, p2, p3, p4, p5, p6)
 
 for(j in 1:6){
-  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 3.5))
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
 }
 
 grid.arrange(grobs = plot_list,  ncol = 2,
@@ -1440,6 +1446,95 @@ print(rlts_gee[[1]])
 
 
 
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  &  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUR6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUR6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUR6_BC_PAH6")
+p2 <- make_forest_plot_lg(coef2, "CUR6_PAH31")
+p3 <- make_forest_plot_lg(coef3, "CUR6_NkF")
+p4 <- make_forest_plot_lg(coef4, "CUR6_PM_RET")
+p5 <- make_forest_plot_lg(coef5, "CUR6_NO2")
+p6 <- make_forest_plot_lg(coef6, "CUR6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 3.5))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUR6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
 # 3.2. Clusters based on model-based exposure estimates accrued before age 18 (clusCHLD5)
 The file “LEX_clusCHLD5.csv” has information on estimated pollutant exposures during early childhood. Estimates are available for 5 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:
 
@@ -1515,11 +1610,12 @@ Results:
 rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = T)
 
 for(j in 1:length(rlts_gee[[2]])){
-  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-2, 2.5))
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
 }
 
 grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
-             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
 ```
 ```{r}
 cat("The estimated effects:")
@@ -1558,7 +1654,8 @@ coef5 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCHLD5,
-                                          Y = var_name_list$EEAs[i])
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -1594,7 +1691,7 @@ p5 <- make_forest_plot_lg(coef5, "CHLD5_SO2")
 plot_list <- list(p1, p2, p3, p4, p5)
 
 for(j in 1:5){
- plot_list[[j]] <- plot_list[[j]] + ylim(c(-2.5, 3))
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
 }
 
 grid.arrange(grobs = plot_list,  ncol = 2,
@@ -1697,12 +1794,12 @@ print(round(p_vals_mat,4))
 
 
 
-### GEE (no confounders)
+### GEE (No confounders)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
   Y = & \beta_0 + \beta_1 * X   \\
-  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+  & + \epsilon
 \end{aligned}
 $$
 where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
@@ -1713,11 +1810,12 @@ Results:
 rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
-  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-2, 2.5))
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
 }
 
 grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
-             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
 ```
 ```{r}
 cat("The estimated effects:")
@@ -1732,6 +1830,91 @@ for(j in 1:length(rlts_gee[[1]])){
 print(rlts_gee[[1]])
 ```
 
+
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X7 +  \beta_2 X33 + \beta_3 NkF + \beta_4 NO2 + \beta_5 SO2  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCHLD5_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCHLD5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CHLD5_X7")
+p2 <- make_forest_plot_lg(coef2, "CHLD5_X33")
+p3 <- make_forest_plot_lg(coef3, "CHLD5_NkF")
+p4 <- make_forest_plot_lg(coef4, "CHLD5_NO2")
+p5 <- make_forest_plot_lg(coef5, "CHLD5_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-4,4))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusCHLD5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
 
 
 
@@ -1856,7 +2039,8 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUM6,
-                                          Y = var_name_list$EEAs[i])
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2000,7 +2184,7 @@ print(round(p_vals_mat,4))
 
 
 
-### GEE (no confounders)
+### GEE (No confounders)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
@@ -2032,6 +2216,96 @@ for(j in 1:length(rlts_gee[[1]])){
              p_val = round(as.numeric(p_val), 4))
 }
 print(rlts_gee[[1]])
+```
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_NO2\_PM +  \beta_2 PAH36 + \beta_3 DlP  + \beta_4 NkF + \beta_5 RET + \beta_6 SO2  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUM6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUM6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUM6_BC_NO2_PM")
+p2 <- make_forest_plot_lg(coef2, "CUM6_PAH36")
+p3 <- make_forest_plot_lg(coef3, "CUM6_DlP")
+p4 <- make_forest_plot_lg(coef4, "CUM6_NkF")
+p5 <- make_forest_plot_lg(coef5, "CUM6_RET")
+p6 <- make_forest_plot_lg(coef6, "CUM6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-2.5, 3.5))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUM6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
 ```
 
 
@@ -2156,7 +2430,8 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusMEAS6,
-                                          Y = var_name_list$EEAs[i])
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2338,6 +2613,96 @@ print(rlts_gee[[1]])
 
 
 
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusMEAS6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusMEAS6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "MEAS6_BC_PM_RET")
+p2 <- make_forest_plot_lg(coef2, "MEAS6_X31")
+p3 <- make_forest_plot_lg(coef3, "MEAS6_X5")
+p4 <- make_forest_plot_lg(coef4, "MEAS6_DlP")
+p5 <- make_forest_plot_lg(coef5, "MEAS6_NkF")
+p6 <- make_forest_plot_lg(coef6, "MEAS6_NO2_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusMEAS6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
 # 3.5. Clusters based on urinary biomarkers (clusURI5)
 The file “LEX_clusURI5.csv” has information on measured urinary biomarkers obtained during each visit. Estimates are available for 5 different prototypes (cluster variables) for a total of 163 subjects and 186 visits. The prototypes are labelled as:  
 
@@ -2459,7 +2824,8 @@ coef5 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusURI5,
-                                          Y = var_name_list$EEAs[i])
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2601,7 +2967,7 @@ print(round(p_vals_mat,4))
 
 
 
-### GEE (no confounders)
+### GEE (No confounders)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
@@ -2633,6 +2999,90 @@ for(j in 1:length(rlts_gee[[1]])){
              p_val = round(as.numeric(p_val), 4))
 }
 print(rlts_gee[[1]])
+```
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * NAP\_1M\_2M +  \beta_2 ACE + \beta_3 FLU\_PHE + \beta_4 PYR + \beta_5 CHR  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusURI5_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusURI5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "URI5_NAP_1M_2M")
+p2 <- make_forest_plot_lg(coef2, "URI5_ACE")
+p3 <- make_forest_plot_lg(coef3, "URI5_FLU_PHE")
+p4 <- make_forest_plot_lg(coef4, "URI5_PYR")
+p5 <- make_forest_plot_lg(coef5, "URI5_CHR")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-8, 8))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured urinary biomarkers"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusURI5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
 ```
 
 
