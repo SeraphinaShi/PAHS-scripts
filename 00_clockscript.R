@@ -139,6 +139,20 @@ pheno$Age <- pheno$age
 
 
 
+pheno$SbjctD[(is.na(pheno$SbjctD)) & (substr(pheno$SID, 1, 2) == "CQ")] <- substr(pheno$SID[(is.na(pheno$SbjctD)) & (substr(pheno$SID, 1, 2) == "CQ")], 5, 7)
+pheno$Visit[(is.na(pheno$Visit)) & (substr(pheno$SID, 1, 2) == "CQ")] <- substr(pheno$SID[(is.na(pheno$Visit)) & (substr(pheno$SID, 1, 2) == "CQ")], 4, 4)
+
+
+library(tidyr)
+pheno <- pheno %>%
+  group_by(SbjctD) %>%
+  fill(c(age, Gender, BMI, ses, edu, education_cat,
+         county, loc_N, loc_E, dist_min, inpatient_sms, diagnosis_code_sms, diagnosis_eng_sms, 
+         econ_any_items, curr_commune),
+       .direction = "downup") %>%
+  ungroup()
+
+
 keep_cols <- intersect(colnames(horvath_data), pheno$TargetID) # Find common observations between pheno and beta mat
 horvath_data <- horvath_data[,c("CpGName", keep_cols), with = F] # If there are extra observations not found in both then remove them.
 pheno <- pheno[na.omit(match(keep_cols, pheno$TargetID)), ] # Make sure row order of phenofile matches the column order of beta/cpg matrix (check ids)

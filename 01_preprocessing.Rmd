@@ -34,18 +34,26 @@ dat <- read.csv("../data/0.calculate_clocks/horvathcalculator_beta_input.output.
 dat <- dat[dat$Gender != "M", ]
 dat <- dat[!(grepl("CR" ,dat$SID) & dat$Group == "LEX"), ] # remove controls that are not clean
 
-clusCUR6 <- read.csv("../data/new_exposure_files/LEX_clusCUR6.csv")
-clusCHLD5 <- read.csv("../data/new_exposure_files/LEX_clusCHLD5.csv")
-clusCUM6 <- read.csv("../data/new_exposure_files/LEX_clusCUM6.csv")
-clusMEAS6 <- read.csv("../data/new_exposure_files/LEX_clusMEAS6.csv")
-clusURI5 <- read.csv("../data/new_exposure_files/LEX_clusURI5.csv")
+clusCUR6 <- read.csv("../data/new_exposure_files/LEX_clusCUR6.csv") %>% 
+  select(- Visit) %>%
+  unique()
+clusCHLD5 <- read.csv("../data/new_exposure_files/LEX_clusCHLD5.csv") %>% 
+  select(- Visit) %>%
+  unique()
+clusCUM6 <- read.csv("../data/new_exposure_files/LEX_clusCUM6.csv") %>% 
+  select(- Visit) %>%
+  unique()
+clusMEAS6 <- read.csv("../data/new_exposure_files/LEX_clusMEAS6.csv") %>% 
+  select(- Visit) %>%
+  unique()
+clusURI5 <- read.csv("../data/new_exposure_files/LEX_clusURI5.csv") 
 
 dat <- dat %>% 
-  merge(clusCUR6, by=c("SbjctD","Visit"), all = T) %>% 
-  merge(clusCHLD5, by=c("SbjctD","Visit"), all = T) %>% 
-  merge(clusCUM6, by=c("SbjctD","Visit"), all = T) %>% 
-  merge(clusMEAS6, by=c("SbjctD","Visit"), all = T) %>% 
-  merge(clusURI5, by=c("SbjctD","Visit"), all = T) 
+  merge(clusCUR6, by=c("SbjctD"), all.x = T) %>% 
+  merge(clusCHLD5, by=c("SbjctD"), all.x = T) %>% 
+  merge(clusCUM6, by=c("SbjctD"), all.x = T) %>% 
+  merge(clusMEAS6, by=c("SbjctD"), all.x = T) %>% 
+  merge(clusURI5, by=c("SbjctD", "Visit"), all.x = T) 
 ```
 
 ```{r}
