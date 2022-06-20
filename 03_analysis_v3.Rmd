@@ -853,7 +853,7 @@ print(coefs_3_simple %>%
 
 
 
-# 2.4 All plots together
+# 2.0. All plots together
 ```{r gee_FuelTypes_3periods, fig.width=8, fig.height=3}
 coefs_1$exposure_time = "Current Exposure"
 coefs_2$exposure_time = "Childhood Exposure"
@@ -2577,7 +2577,7 @@ print(plot_df)
 
 
 
-# 4.4. 5MC (Current, Childhood, Cumulative)
+# 4.0. All plots together
 ```{r gee_5MC_3Periods, fig.width=8, fig.height=3}
 plot_df_1$exposure_time = "Current Exposure"
 plot_df_2$exposure_time = "Childhood Exposure"
