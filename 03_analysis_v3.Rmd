@@ -854,7 +854,7 @@ print(coefs_3_simple %>%
 
 
 # 2.4 All plots together
-```{r gee_FuelTypes, fig.width=8, fig.height=3}
+```{r gee_FuelTypes_3periods, fig.width=8, fig.height=3}
 coefs_1$exposure_time = "Current Exposure"
 coefs_2$exposure_time = "Childhood Exposure"
 coefs_3$exposure_time = "Cumulative Exposure"
@@ -1685,7 +1685,7 @@ print(coefs_list)
 
 
 
-# 3.0. Clusters based on model-based exposure estimates (Current, Chioldhood, and Cumulative)
+# 3.0. All plots together
 ```{r fig.width=15, fig.height=8}
 rlts_gee_1[[1]]$CUR6_BC_PAH6$cluster = "BC_PAH6"
 rlts_gee_1[[1]]$CUR6_PAH31$cluster = "PAH31"
@@ -1742,7 +1742,7 @@ rlts_gee_Df$EAAs <- rep(var_name_list$EEAs, 6+6+6)
 ```
 
 
-```{r fig.width=15, fig.height=8}
+```{r gee_clusters_3periods, fig.width=15, fig.height=8}
 make_forest_plot_lg(rlts_gee_Df, "Expected EAA Change with 1 Unit Increased in each Cluster") + 
   facet_wrap( ~ exposure_period + cluster, nrow=3)
 ```
