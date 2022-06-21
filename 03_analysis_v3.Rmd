@@ -49,6 +49,13 @@ var_name_list$PCH_5MC <- c("cur_5mc", "cum_5mc", "bir_5mc", "cur_5mc_measured")
 ```
 
 ```{r}
+
+for (var in unname(unlist(var_name_list$cluster_exp))) {
+  sd_var <- sd(df[,var], na.rm = T)
+  df[,var] = df[,var]/sd_var
+}
+
+
 df$curFuel[df$curFuel != "Smoky"] = "Other"
 df$brthFuel[df$brthFuel != "Smoky"] = "Other"
 df$cumFuel[df$cumFuel != "Smoky"] = "Other"
@@ -2582,8 +2589,8 @@ print(plot_df)
 plot_df_1$exposure_time = "Current Exposure"
 plot_df_2$exposure_time = "Childhood Exposure"
 plot_df_3$exposure_time = "Cumulative Exposure"
-coefs <- rbind(plot_df_1, plot_df_2, plot_df_3)
-coefs$exposure_time = factor(coefs$exposure_time, levels = c("Current Exposure","Childhood Exposure", "Cumulative Exposure"))
-make_forest_plot_lg(coefs, "Expected EAA Change with 1 Unit Increased in 5MC Exposure") + 
-  facet_wrap(~ exposure_time)
+plot_df_5mc <- rbind(plot_df_1, plot_df_2, plot_df_3)
+plot_df_5mc$exposure_time = factor(plot_df_5mc$exposure_time, levels = c("Current Exposure","Childhood Exposure", "Cumulative Exposure"))
+make_forest_plot_lg(plot_df_5mc, "Expected EAA Change with 1 Unit Increased in 5MC Exposure") + 
+  facet_wrap(~ exposure_time, scales = 'free_x') 
 ```
