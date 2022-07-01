@@ -1,0 +1,3435 @@
+---
+title: "PASH Analysis"
+author: "Seraphina Shi"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+setwd("/Users/seraphinashi/Desktop/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
+
+plotFolder <- "../images/03_analysis_v3/"
+if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
+
+knitr::opts_chunk$set(
+  cache=FALSE, autodep=FALSE, warning=FALSE, message=FALSE, echo=FALSE,
+  results = 'markup', dev='png', dpi=150, fig.align = "center", fig.path=plotFolder,
+  cache.path=".cache/",
+  duplicate.label="allow"
+)
+
+```
+
+```{r}
+source('shared_commands.R')
+```
+
+```{r}
+df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
+```
+
+```{r get_5MC_data}
+library(readxl)
+LEX_5MC_all <- read_excel("../data/new_exposure_files/LEX_5MC_all.xlsx")
+# View(LEX_5MC_all)
+LEX_5MC_all <- LEX_5MC_all %>% rename("SbjctD" = "subject_id", 
+                                      "Visit" = "visit",
+                                      "cur_5mc" = "sum.X5.methylchrysene_conc_final.imputed", 
+                                      "cum_5mc" = "cumlife_5mc",
+                                      "bir_5mc" = "birthyr_5mc",
+                                      "cur_5mc_measured" = "_5_methylchrysene_conc_measured")
+
+
+df <- merge(df, LEX_5MC_all %>% select(SbjctD, cur_5mc, cum_5mc, bir_5mc) %>% unique(), by = "SbjctD", all.x=T)
+df <- merge(df, LEX_5MC_all %>% select(SbjctD, Visit, cur_5mc_measured) %>% unique(), by = c("SbjctD","Visit"), all.x=T)
+
+var_name_list$PCH_5MC <- c("cur_5mc", "cum_5mc", "bir_5mc", "cur_5mc_measured")
+```
+
+```{r standardize_clusters}
+for (var in unname(unlist(var_name_list$cluster_exp))) {
+  sd_var <- sd(df[,var], na.rm = T)
+  df[,var] = df[,var]/sd_var
+}
+```
+
+```{r get_new_fuel_types} 
+new_var_df <- read.delim("../data/new_exposure_files/LEX_ALUCov.txt") 
+new_var_df <- new_var_df %>% select(subject_id, visit, fuel, ltfuel, fuel18yr,fuel_birth)
+new_var_df <- new_var_df %>% 
+  mutate(curFuel = ifelse(fuel==1, "Smoky",
+                           ifelse(fuel==2, "Smokeles",
+                                  ifelse(fuel %in% c(3,4), "Wood_and_or_Plant", 
+                                  "Mix"))),
+         curFuel_detail = ifelse(fuel==1, "Smoky",
+                           ifelse(fuel==2, "Smokeles",
+                                  ifelse(fuel==3, "Wood", 
+                                         ifelse(fuel==4, "Plant", "mix")))),
+         childFuel = ifelse(fuel18yr==1, "Smoky",
+                            ifelse(fuel18yr==2, "Smokeles",
+                                   ifelse(fuel18yr==3, "Wood", 
+                                          "Mix"))),
+         brthFuel = ifelse(fuel_birth==1, "Smoky",
+                            ifelse(fuel_birth==2, "Smokeles",
+                                   ifelse(fuel_birth==3, "Wood", 
+                                          ifelse(fuel_birth==4, "Mix",
+                                                 "Outside of XW/FY")))),
+         cumFuel = ifelse(ltfuel==1, "Smoky",
+                            ifelse(ltfuel==2, "Smokeles", 
+                                   ifelse(ltfuel==3, "Wood", 
+                                          "Mix")))) %>%
+  rename(SbjctD=subject_id, Visit=visit)
+
+df <- df %>% 
+  select(-c(curFuel, brthFuel, cumFuel)) %>%
+  merge(new_var_df, by = c("SbjctD", "Visit"), all.x = T)
+```
+
+```{r}
+dup_sbjctD <- df$SbjctD[duplicated(df$SbjctD)]
+df_sub1 = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 1) | (! df$SbjctD %in% dup_sbjctD), ]
+df_subs <- list("df_sub1" = df_sub1,
+                "df_sub2" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 2) | (! df$SbjctD %in% dup_sbjctD),])
+```
+
+
+```{r define_functions_1}
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+make_forest_plot <- function(df_plot, exposure){
+  df_plot$sig_level <- as.factor(df_plot$sig_level)
+  p <- ggplot(data=df_plot, aes(x=EAAs, y=coefficient, ymin=ci_lower, ymax=ci_upper)) +
+    geom_point(shape=24, size=2, aes(col = sig_level, fill = sig_level)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = sig_level)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="change in 1 year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=8.6, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=8),
+          axis.title.x = element_text(size=8),
+          axis.text = element_text(size=7)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color) + 
+    guides(fill=guide_legend(title="P-value"))
+
+  return(p)
+}
+
+make_forest_plot_lg <- function(df, exposure){
+  df$sig_level <- as.factor(df$sig_level)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=ci_lower, ymax=ci_upper)) +
+    geom_point(shape=24, size=2, aes(col = sig_level, fill = sig_level)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = sig_level)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="change in 1 year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=15, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=10)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color) + 
+    guides(fill= guide_legend(title="P-value"),
+           col = guide_legend(title="P-value") )
+
+  return(p)
+}
+
+
+options(scipen = 999)
+```
+
+```{r define_functions_2}
+library(geepack)
+
+preform_gee <- function(Y, X, log_trans_X = F, adjust_cfd = F, dat = df) {
+  tmp <- dat[!is.na(dat[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  if(adjust_cfd){
+    tmp <- tmp %>% select(var_name_list$ID,
+                          var_name_list$EEAs,
+                          var_name_list$confounders,
+                          unname(X)) %>% na.omit()
+  }
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  X_form <- ifelse(adjust_cfd, 
+                 paste0(X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(X))
+
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") # This says all pairs of responses within a subject are equally correlated
+  coef <- summary(geefit)$coefficients[2,1]
+  coef_text <- as.character(round(coef,4))
+  std <- summary(geefit)$coefficients[2,2]
+  std_text <- as.character(round(std,4))
+  p_val <- summary(geefit)$coefficients[2,4]
+  sig_star <- ifelse(p_val<0.001, "***",
+                ifelse(p_val<0.01, "** ",
+                       ifelse(p_val<0.05, "*  ", "   ")))
+  sig_level <- ifelse(p_val <= 0.001, "<= 0.001",
+                ifelse(p_val <= 0.01, "<= 0.01",
+                       ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))
+  # rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),
+  #               sig_star,
+  #               "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
+  ci_l <- coef - 1.96 * std
+  ci_u <- coef + 1.96 * std
+  return(c(coef, std, ci_l, ci_u, p_val, sig_level))
+}
+
+
+perform_group_gee <- function(X, adjust_cfd = F, var_name = NA){
+  plot_df_list <- list()
+  lm_coef_ambient_plot_list <- list()
+  for (j in 1:length(X)) {
+    exp <- X[j]
+    plot_df <- data.frame(matrix(NA, ncol = 6))
+    for(i in 1:length(var_name_list$EEAs)){
+      rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                                X = exp, 
+                                adjust_cfd = adjust_cfd, 
+                                dat=df)
+      plot_df[i,] <- rlts
+    }
+    colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+    rownames(plot_df) <- var_name_list$EEAs
+    plot_df$EAAs <- EAAs_names
+    plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+  
+    plot_df$coefficient = as.numeric(plot_df$coefficient)
+    plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+    plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+  
+    if(sum(is.na(var_name))>0){
+      lm_coef_ambient_plot <- make_forest_plot(plot_df, exp)
+    } else {
+      lm_coef_ambient_plot <- make_forest_plot(plot_df, var_name[j])
+    }
+    
+    plot_df_list[[exp]] <- plot_df
+    lm_coef_ambient_plot_list[[exp]] = lm_coef_ambient_plot
+  }
+  return(list(plot_df_list, lm_coef_ambient_plot_list))
+}
+
+
+
+preform_gee_exposure_prototype <- function(X, Y, adjust_cfd = T, log_trans_X=F) {
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~", X_form))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") # This says all pairs of responses within a subject are equally correlated
+
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval) %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, pval, sig_level)
+
+
+  colnames(coefs) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  
+  return(coefs)
+}
+
+```
+In this file, we presented the results from analyses of exposures against computed epigenetic age accelerations (EAA) calculated using DNA methylation data by different methods. For each exposure, we conducted both primary analyses (likelihood ratio tests and generalized estimating equations (GEE), adjusted for confounders) and sensitivity analyses (likelihood ratio tests and/or generalized estimating equations (GEE) limited to certain fuel users, not adjusted for confounders). In addition to what's included in the analysis plan, we also analyzed ambient and urinary exposures. 
+
+
+# 1.1. Description of study population
+
+There are `r nrow(df)` visits with corresponding epigenetic ages available among `r length(unique(df$SbjctD))` female subjects. For these `r length(unique(df$SbjctD))` subjects, `r length(unique(df$SbjctD)) - length(dup_sbjctD)` have been visited once and `r length(dup_sbjctD)` have been visited twice. 
+
+The following tables summarize all the information of the first visit of these `r length(unique(df$SbjctD))` subjects.
+
+## Baseline characteristics (confounders)
+```{r}
+library(table1)
+
+# df_sub1 %>% select(var_name_list$confounders) %>% mutate(ses = as.factor(ses)) %>%
+#   tbl_summary(statistic=list(all_continuous() ~ "{mean} ({sd})", 
+#                              all_categorical() ~ "{n} / {N} ({p}%)"),
+#               missing_text = "(Missing)")
+
+table1(~ Age + BMI + factor(county) + factor(ses)  + factor(edu), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+
+## Epigenetic ages
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$clocks, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Epigenetic ages accelarations
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$EEAs, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Fuel/stove type exposures
+```{r}
+table1(as.formula(paste(" ~ ", paste(paste0("factor(", c(var_name_list$fuel_exp, var_name_list$stove_exp),")"), 
+                                     collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## 5MC exposures
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$PCH_5MC, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+
+```{r}
+print("Pearson pair-wise correlation:")
+cor(df_sub1 %>%  select(var_name_list$PCH_5MC) %>% na.omit(), 
+    method = "pearson")
+```
+```{r}
+print("Spearman pair-wise correlation:")
+cor(df_sub1 %>%  select(var_name_list$PCH_5MC) %>% na.omit(), 
+    method = "spearman")
+```
+
+## Cluster-based exposures
+### clusCUR6
+Clusters based on model-based exposure estimates at or shortly before the visit
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCUR6, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+### clusCHLD5
+Clusters based on model-based exposure estimates accrued before age 18 
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCHLD5, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+### clusCUM6
+Clusters based on model-based lifetime exposure estimates 
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCUM6, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+### clusMEAS6
+Clusters based on pollutant measurements
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusMEAS6, collapse = " + "))), 
+       data = df_sub1)
+```
+
+### clusURI5
+Clusters based on urinary biomarkers
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusURI5, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+
+
+## Ambient exposures
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$ambient_exp, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Urinary biomarkers
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$urinary_exp, collapse = " + "))), 
+       data = df_sub1,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+
+# 1.2. EAA ~ confounders
+```{r gee_EAA_confounders}
+for(i in 1:length(var_name_list$EEAs)){
+    cat("For", var_name_list$EEAs[i], ":")
+    rlts = preform_gee_exposure_prototype(X = var_name_list$confounders,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    rlts$coefficient = round(as.numeric(rlts$coefficient), 4)
+    rlts$std = round(as.numeric(rlts$std), 4)
+    rlts$ci_lower = round(as.numeric(rlts$ci_lower), 4)
+    rlts$ci_upper = round(as.numeric(rlts$ci_upper), 4)
+    rlts$p_val = round(as.numeric(rlts$p_val), 4)
+    print(rlts)
+}
+```
+
+
+# 1.3. 5MC ~ confounders
+```{r gee_5MC_confounders}
+for(i in 1:length(var_name_list$PCH_5MC)){
+    cat("For", var_name_list$PCH_5MC[i], ":")
+    rlts = preform_gee_exposure_prototype(X = var_name_list$confounders,
+                                          Y = var_name_list$PCH_5MC[i],
+                                          adjust_cfd = F)
+    rlts$coefficient = round(as.numeric(rlts$coefficient), 4)
+    rlts$std = round(as.numeric(rlts$std), 4)
+    rlts$ci_lower = round(as.numeric(rlts$ci_lower), 4)
+    rlts$ci_upper = round(as.numeric(rlts$ci_upper), 4)
+    rlts$p_val = round(as.numeric(rlts$p_val), 4)
+
+    print(rlts)
+}
+```
+# 1.4. clusCUR6 ~ confounders
+```{r gee_clusCUR6_confounders}
+for(i in 1:length(var_name_list$cluster_exp$clusCUR6)){
+    cat("For", var_name_list$cluster_exp$clusCUR6[i], ":")
+    rlts = preform_gee_exposure_prototype(X = var_name_list$confounders,
+                                          Y = var_name_list$cluster_exp$clusCUR6[i],
+                                          adjust_cfd = F)
+    rlts$coefficient = round(as.numeric(rlts$coefficient), 4)
+    rlts$std = round(as.numeric(rlts$std), 4)
+    rlts$ci_lower = round(as.numeric(rlts$ci_lower), 4)
+    rlts$ci_upper = round(as.numeric(rlts$ci_upper), 4)
+    rlts$p_val = round(as.numeric(rlts$p_val), 4)
+
+    print(rlts)
+}
+```
+
+# 2.1. Current (self-reported) fuel type 
+## Primary analysis
+### GEE (with confounders, Smokeless ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) + \beta_2 * I(\text{Wood_and_or_Plant})  \\
+  & + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+```{r}
+preform_gee_curFuel <- function(Y, adjust_cfd = F) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$curFuel = factor(tmp$curFuel, levels = c("Smokeles","Smoky","Wood_and_or_Plant"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smokeless (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
+  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"  
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_curFuel_mix_org, fig.width=7, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_curFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_smokeless_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[3,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_smokeless_mean) = var_name_list$EEAs
+rownames(fueltype_woodplant_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_1 <- fueltype_smoky_mean
+
+p1_smokeles <- make_forest_plot_lg(fueltype_smokeless_mean, "Smokeless (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1_woodplant <- make_forest_plot_lg(fueltype_woodplant_mean, "Wood_and_or_Plant")
+
+plot_list <- list(p1_smoky, p1_woodplant)
+
+for(j in 1:2){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-8, 10))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smokeless Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Smokeless fuel yupes:")
+print(fueltype_smoky_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+```{r}
+cat("The estimated average EAA differences of Wood and/or Plant fuel type to Smokeless fuel yupes:")
+print(fueltype_woodplant_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+
+### GEE (with confounders, Other ref)
+The numbers of observations with each current fuel type:
+```{r}
+df <- df %>% mutate(curFuel_1 = ifelse(curFuel=="Smoky", "Smoky", "Other"))
+table(df$curFuel_1)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky})  \\
+  & + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+```{r}
+preform_gee_curFuel_1 <- function(Y, adjust_cfd = F) {
+  X = "curFuel_1"
+  tmp <- df[!is.na(df[,X]),]
+
+  tmp$curFuel_1 = factor(tmp$curFuel_1, levels = c("Other","Smoky"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Other (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_curFuel_mix_org_other, fig.width=4, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_other_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_curFuel_1(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_other_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_other_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_other_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_other_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_4 <- fueltype_smoky_mean
+
+p1_other <- make_forest_plot_lg(fueltype_other_mean, "Other (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky \n (compared to Other fuel types)")
+
+p1_smoky
+
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Other fuel types:")
+print(fueltype_smoky_mean_4 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+
+
+
+### GEE (with confounders, Wood_and_or_Plant ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) + \beta_2 * I(\text{Wood_and_or_Plant})  \\
+  & + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+```{r}
+preform_gee_curFuel_3 <- function(Y, adjust_cfd = F) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$curFuel = factor(tmp$curFuel, levels = c("Wood_and_or_Plant", "Smoky", "Smokeles"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Wood_and_or_Plant (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
+  rownames(coefs)[rownames(coefs) == "curFuelSmokeles"] = "Smokeles"  
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_curFuel_mix_org, fig.width=7, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_curFuel_3(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_smokeless_mean[i,] <- rlts[3,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[1,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_smokeless_mean) = var_name_list$EEAs
+rownames(fueltype_woodplant_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_woodplant_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+
+p1_woodplant <- make_forest_plot_lg(fueltype_smokeless_mean, "Wood_and_or_Plant (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1_smokeles <- make_forest_plot_lg(fueltype_woodplant_mean, "Smokeless")
+
+plot_list <- list(p1_smoky, p1_smokeles)
+
+for(j in 1:2){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-8, 10))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Wood_and_or_Plant Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+
+### GEE (with confounders, Smokeless_PureWood ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel_detail)
+```
+
+```{r}
+table(df$curFuel_detail, df$childFuel)
+```
+
+```{r}
+table(df$curFuel_detail, df$cumFuel)
+```
+
+```{r}
+pure_wood_id <- df$SbjctD[df$curFuel_detail=="Wood" & df$childFuel=="Wood"]
+pure_wood_id <- pure_wood_id[!is.na(pure_wood_id)]
+
+df$curFuel_detail[df$SbjctD %in% pure_wood_id] <- "Smokeless_PureWood"
+df$curFuel_detail[df$curFuel_detail %in% "Smokeles"] <- "Smokeless_PureWood"
+
+table(df$curFuel_detail)
+```
+
+
+Results:
+```{r}
+preform_gee_curFuel_5 <- function(Y, adjust_cfd = F) {
+  X = "curFuel_detail"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$curFuel_detail = factor(tmp$curFuel_detail, levels = c("Smokeless_PureWood","Smoky","Wood", "Plant"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3,4), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Smokeless_PureWood (reference/intercept)"
+  rownames(coefs)[2] = "Smoky"
+  rownames(coefs)[3] = "Wood"  
+  rownames(coefs)[4] = "Plant"  
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_curFuel_mix_org_5, fig.width=7, fig.height=5}
+fueltype_ref_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_wood_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_plan_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_curFuel_5(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_ref_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_wood_mean[i,] <- rlts[3,]
+    fueltype_plan_mean[i,] <- rlts[4,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_ref_mean) = colnames(rlts)
+colnames(fueltype_wood_mean) = colnames(rlts)
+colnames(fueltype_plan_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_ref_mean) = var_name_list$EEAs
+rownames(fueltype_wood_mean) = var_name_list$EEAs
+rownames(fueltype_plan_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_ref_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_wood_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_plan_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p2 <- make_forest_plot_lg(fueltype_wood_mean, "Wood")
+p3 <- make_forest_plot_lg(fueltype_plan_mean, "Plan")
+
+plot_list <- list(p1, p2, p3)
+
+for(j in 1:3){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 10))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smokeless_PureWood Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+
+
+
+
+
+# 2.2. Birth (self-reported) fuel type 
+## Primary analysis
+### GEE (with confounders, Smokeless ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$brthFuel)
+```
+
+Results:
+```{r}
+preform_gee_brthFuel <- function(Y, adjust_cfd = F) {
+  X = "brthFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Smokeles","Smoky","Wood", "Mix", "Outside of XW/FY"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[1:5, c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_brthFuel_mix, fig.width=7, fig.height=5}
+coefs1 <- data.frame(matrix(NA, ncol = 6))
+coefs2 <- data.frame(matrix(NA, ncol = 6))
+coefs3 <- data.frame(matrix(NA, ncol = 6))
+coefs4 <- data.frame(matrix(NA, ncol = 6))
+coefs5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_brthFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    coefs1[i,] <- rlts[1,]
+    coefs2[i,] <- rlts[2,]
+    coefs3[i,] <- rlts[3,]
+    coefs4[i,] <- rlts[4,]
+    coefs5[i,] <- rlts[5,]
+}
+
+colnames(coefs1) = colnames(rlts)
+colnames(coefs2) = colnames(rlts)
+colnames(coefs3) = colnames(rlts)
+colnames(coefs4) = colnames(rlts)
+colnames(coefs5) = colnames(rlts)
+
+rownames(coefs1) = var_name_list$EEAs
+rownames(coefs2) = var_name_list$EEAs
+rownames(coefs3) = var_name_list$EEAs
+rownames(coefs4) = var_name_list$EEAs
+rownames(coefs5) = var_name_list$EEAs
+
+
+coefs1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coefs2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coefs3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coefs4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coefs5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coefs1, "Smokeless (reference)")
+p2 <- make_forest_plot_lg(coefs2, "Smoky")
+p3 <- make_forest_plot_lg(coefs3, "Wood")
+p4 <- make_forest_plot_lg(coefs4, "Mix")
+p5 <- make_forest_plot_lg(coefs5, "Outside of XW/FY")
+
+plot_list <- list(p2, p3, p4,p5)
+
+for(j in 1:4){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 13))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each birth Fuel Type\n compared to Smokeless Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Smokeless fuel yupes:")
+print(coefs2 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+```{r}
+cat("The estimated average EAA differences of Wood fuel type to Smokeless fuel yupes:")
+print(coefs3 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+```{r}
+cat("The estimated average EAA differences of Mix fuel type to Smokeless fuel yupes:")
+print(coefs4 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+```{r}
+cat("The estimated average EAA differences of Outside of XW/FY to Smokeless fuel yupes:")
+print(coefs5 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+### GEE (with confounders, Other ref)
+The numbers of observations with each current fuel type:
+```{r}
+df <- df %>% mutate(brthFuel_1 = ifelse(brthFuel=="Smoky", "Smoky", "Other"))
+table(df$brthFuel_1)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky})  \\
+  & + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+```{r}
+preform_gee_brthFuel_1 <- function(Y, adjust_cfd = F) {
+  X = "brthFuel_1"
+  tmp <- df[!is.na(df[,X]),]
+
+  tmp$brthFuel_1 = factor(tmp$brthFuel_1, levels = c("Other","Smoky"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Other (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_brthFuel_mix_org_other, fig.width=4, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_other_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_brthFuel_1(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_other_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_other_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_other_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_other_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1_other <- make_forest_plot_lg(fueltype_other_mean, "Other (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky \n (compared to Other fuel types)")
+
+p1_smoky
+
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Other fuel types:")
+print(fueltype_smoky_mean_4 %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 4)) %>%
+        select(-EAAs))
+```
+
+
+
+
+
+
+
+# 2.2. Childhood  (self-reported) fuel type 
+
+## Primary analysis
+## GEE (with confounders, Smokeless ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$childFuel)
+```
+In this section, we perform the generalized estimating equations (GEE) to evaluate the association between current fuel type and the Grim Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) + \beta_2 * I(\text{Wood}) + \beta_3 * I(\text{Mix})  \\
+  & + \beta_4 * county + \beta_5 * BMI + \beta_6 * ses + \beta_7 * edu + \epsilon
+\end{aligned}
+$$
+
+Results:
+```{r}
+preform_gee_childFuel <- function(Y, adjust_cfd = F) {
+  X = "childFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$childFuel = factor(tmp$childFuel, levels = c("Smokeles", "Smoky","Wood", "Mix"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3,4), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smokelees (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "childFuelSmoky"] = "Smoky"
+  rownames(coefs)[rownames(coefs) == "childFuelWood"] = "Wood"
+  rownames(coefs)[rownames(coefs) == "childFuelMix"] = "Mix"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_childFuel_mix_org, fig.width=7, fig.height=5}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_wood_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_childFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_wood_mean[i,] <- rlts[3,]
+    fueltype_smokeless_mean[i,] <- rlts[1,]
+    fueltype_mix_mean[i,] <- rlts[4,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_wood_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_mix_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_wood_mean) = EAAs_vars
+rownames(fueltype_smokeless_mean) = EAAs_vars
+rownames(fueltype_mix_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_wood_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_2 <- fueltype_smoky_mean
+
+p2 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p3 <- make_forest_plot_lg(fueltype_wood_mean, "Wood")
+p1 <- make_forest_plot_lg(fueltype_smokeless_mean, "Smokeless (reference)")
+p4 <- make_forest_plot_lg(fueltype_mix_mean, "Mix")
+
+plot_list <- list(p2, p3, p4)
+
+for(j in 1:3){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-7.5, 10))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2, 
+             layout_matrix = rbind(c(1,2),
+                                   c(3,NA)),
+             top = textGrob(paste("Average EAA difference of each Childhood Fuel Type\n compared to Smokeless Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, smoky compared to smokeless coal:")
+print(fueltype_smoky_mean_2 %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, wood compared to smokeless coal:")
+print(fueltype_wood_mean %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, mix compared to smokeless coal:")
+print(fueltype_mix_mean %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+
+## GEE (with confounders, Other ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$childFuel)
+```
+In this section, we perform the generalized estimating equations (GEE) to evaluate the association between current fuel type and the Grim Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky})  \\
+  & + \beta_4 * county + \beta_5 * BMI + \beta_6 * ses + \beta_7 * edu + \epsilon
+\end{aligned}
+$$
+
+Results:
+```{r}
+preform_gee_childFuel_1 <- function(Y, adjust_cfd = F) {
+  X = "childFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp %>% mutate(childFuel = ifelse(childFuel=="Smoky", "Smoky", "Other"))
+  
+  tmp$childFuel = factor(tmp$childFuel, levels = c("Other", "Smoky"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Other (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "childFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_childFuel_mix_org_other, fig.width=7, fig.height=5}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_other_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_childFuel_1(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_other_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_other_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_other_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_other_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_5 <- fueltype_smoky_mean
+
+p2 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1 <- make_forest_plot_lg(fueltype_smokeless_mean, "Other (reference)")
+
+plot_list <- list(p2, p3, p4)
+
+p2
+
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, smoky compared to other coal:")
+print(fueltype_smoky_mean_2 %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+
+
+## GEE (with confounders, Smokeless_Wood ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$childFuel)
+```
+In this section, we perform the generalized estimating equations (GEE) to evaluate the association between current fuel type and the Grim Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky})  \\
+  & + \beta_4 * county + \beta_5 * BMI + \beta_6 * ses + \beta_7 * edu + \epsilon
+\end{aligned}
+$$
+
+Results:
+```{r}
+preform_gee_childFuel_2 <- function(Y, adjust_cfd = F) {
+  X = "childFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp %>% mutate(childFuel = ifelse(childFuel=="Smoky", "Smoky", 
+                                           ifelse(childFuel=="Mix", "Mix", "Smokeless_Wood")))
+  
+  tmp$childFuel = factor(tmp$childFuel, levels = c("Smokeless_Wood", "Smoky", "Mix"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Smokeless_Wood (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "childFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_childFuel_mix_org_other, fig.width=7, fig.height=5}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_mix_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_childFuel_2(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_mix_mean[i,] <- rlts[3,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_mix_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_mix_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_5 <- fueltype_smoky_mean
+
+p2 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1 <- make_forest_plot_lg(fueltype_smokeless_mean, "Mix")
+
+plot_list <- list(p1, p2)
+
+for(j in 1:2){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-12, 12))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2, 
+             top = textGrob(paste("Average EAA difference of each Childhood Fuel Type\n compared to Smokeless_Wood Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, smoky compared to other coal:")
+print(fueltype_smoky_mean_2 %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+
+
+
+## GEE (with confounders, Mix ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$childFuel)
+```
+In this section, we perform the generalized estimating equations (GEE) to evaluate the association between current fuel type and the Grim Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky})  \\
+  & + \beta_4 * county + \beta_5 * BMI + \beta_6 * ses + \beta_7 * edu + \epsilon
+\end{aligned}
+$$
+
+Results:
+```{r}
+preform_gee_childFuel_3 <- function(Y, adjust_cfd = F) {
+  X = "childFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp %>% mutate(childFuel = ifelse(childFuel=="Smoky", "Smoky", 
+                                           ifelse(childFuel=="Mix", "Mix", "Smokeless_Wood")))
+  
+  tmp$childFuel = factor(tmp$childFuel, levels = c( "Mix", "Smoky", "Smokeless_Wood"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[1] = "Mix (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "childFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_childFuel_mix_org_other, fig.width=7, fig.height=5}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_wood_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_childFuel_3(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_smokeless_wood_mean[i,] <- rlts[3,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_wood_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = EAAs_vars
+rownames(fueltype_smokeless_wood_mean) = EAAs_vars
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_smokeless_wood_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+
+p2 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1 <- make_forest_plot_lg(fueltype_smokeless_wood_mean, "smokeless_wood")
+
+plot_list <- list(p1, p2)
+
+for(j in 1:2){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-5, 5))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2, 
+             top = textGrob(paste("Average EAA difference of each Childhood Fuel Type\n compared to Mix Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+cat("The estimated average EAA difference of childhood fuel type, smoky compared to other coal:")
+print(fueltype_smoky_mean_2 %>% mutate(coefficient = round(coefficient, 4),                        
+                       std = round(std, 4),                        
+                       ci_lower = round(ci_lower, 4),                        
+                       ci_upper = round(ci_upper, 4),                        
+                       p_val = round(p_val, 4)))
+```
+
+
+
+
+
+# 2.3. Cumulative lifetime (self-reported) fuel type 
+```{r}
+table(df$cumFuel)
+```
+
+## Primary analysis
+### GEE (with confounders, Mix ref)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between cumulative fuel type and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+```{r}
+preform_gee_cumFuel <- function(Y, adjust_cfd = F) {
+  X = "cumFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp <- tmp[tmp$cumFuel != "Wood", ]
+  
+  tmp$cumFuel = factor(tmp$cumFuel, levels = c("Mix",  "Smoky"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Mix (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "cumFuelSmoky"] = "Smoky"
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+```
+
+```{r gee_cumFuel_mix}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 7))
+fueltype_mix_mean <- data.frame(matrix(NA, ncol = 7))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_cumFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_mix_mean[i,] <- rlts[1,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_mix_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = var_name_list$EEAs
+rownames(fueltype_mix_mean) = var_name_list$EEAs
+
+fueltype_smoky_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+fueltype_mix_mean$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+fueltype_smoky_mean_3 <- fueltype_smoky_mean
+
+p2 <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1 <- make_forest_plot_lg(fueltype_mix_mean, "Mix (reference)")
+
+p2
+
+```
+
+```{r}
+cat("The estimated average  EAA difference of cumulative fuel type, smoky compared to mix coal:")
+print(fueltype_smoky_mean_3)
+```
+
+
+
+# 2.0. All plots together
+```{r gee_FuelTypes_3periods, fig.width=8, fig.height=3}
+fueltype_smoky_mean_1$exposure_time = "Current Exposure"
+fueltype_smoky_mean_2$exposure_time = "Childhood Exposure"
+fueltype_smoky_mean_3$exposure_time = "Cumulative Exposure" 
+fueltype_smoky_mean_3 <- fueltype_smoky_mean_3[, !is.na(colnames(fueltype_smoky_mean_3))]
+coefs <- rbind(fueltype_smoky_mean_1, fueltype_smoky_mean_2, fueltype_smoky_mean_3)
+
+coefs$exposure_time = factor(coefs$exposure_time, levels = c("Current Exposure","Childhood Exposure", "Cumulative Exposure"))
+make_forest_plot_lg(coefs, "Average EAA Difference of Smoky Fuel Type Compared to Smokeless/Mix Fuel Type") +
+  ylim(-8,8) + 
+  facet_wrap(~ exposure_time)
+
+
+# smoky vs smokeless
+p1 <- make_forest_plot_lg(fueltype_smoky_mean_1, "") + 
+  ylim(-6,7) +
+  labs(y = " ")
+ggsave(file=sprintf("%s/fuelType_current.png",plotFolder), p1, width = 4.5, height = 3, dpi = 1200) 
+
+# smoky vs mix
+p2 <- make_forest_plot_lg(fueltype_smoky_mean_2, "") + 
+  ylim(-6,7) 
+ggsave(file=sprintf("%s/fuelType_childhood.png",plotFolder), p2, width = 4.5, height = 3, dpi = 1200) 
+
+
+# smoky vs mix
+p3 <- make_forest_plot_lg(fueltype_smoky_mean_3, "") + 
+  ylim(-6,7) +
+  labs(y = " ")
+ggsave(file=sprintf("%s/fuelType_cumulative.png",plotFolder), p3, width = 4.5, height = 3, dpi = 1200) 
+```
+
+
+
+
+# 3.1. Clusters based on model-based exposure estimates at or shortly before the visit (clusCUR6)
+The file “LEX_clusCUR6.csv” has information on current pollutant exposures, obtained for the 2 years preceding the visit. To reduce multi-collinearity between exposures, exposure prototypes were derived based on hierarchical cluster analysis in combination followed by principal components analysis. These estimates are available for 6 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:
+
+CUR6_BC_PAH6 – Black carbon (BC) and 6 PAHs   
+CUR6_PAH31 – a large cluster of 31 PAHs  
+CUR6_NkF – NkF only  
+CUR6_PM_RET – Particulate matter (PM) and retene  
+CUR6_NO2 – NO2 only  
+CUR6_SO2 – SO2 only    
+
+
+
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCUR6, collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Primary analysis
+
+### GEE (with confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCUR6_mix, fig.width=8, fig.height=7}
+rlts_gee_1 <- perform_group_gee(X = var_name_list$cluster_exp$clusCUR6, adjust_cfd = T)
+
+for(j in 1:length(rlts_gee_1[[2]])){
+  rlts_gee_1[[2]][[j]] <- rlts_gee_1[[2]][[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = rlts_gee_1[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee_1[[1]])){
+  rlts_gee_1[[1]][[j]] <- rlts_gee_1[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee_1[[1]])
+```
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUR6_mix_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUR6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUR6_BC_PAH6")
+p2 <- make_forest_plot_lg(coef2, "CUR6_PAH31")
+p3 <- make_forest_plot_lg(coef3, "CUR6_NkF")
+p4 <- make_forest_plot_lg(coef4, "CUR6_PM_RET")
+p5 <- make_forest_plot_lg(coef5, "CUR6_NO2")
+p6 <- make_forest_plot_lg(coef6, "CUR6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUR6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+## Sensitivity analyses
+### GEE (No confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCUR6_simple, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUR6, adjust_cfd = F)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  &  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUR6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUR6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUR6_BC_PAH6")
+p2 <- make_forest_plot_lg(coef2, "CUR6_PAH31")
+p3 <- make_forest_plot_lg(coef3, "CUR6_NkF")
+p4 <- make_forest_plot_lg(coef4, "CUR6_PM_RET")
+p5 <- make_forest_plot_lg(coef5, "CUR6_NO2")
+p6 <- make_forest_plot_lg(coef6, "CUR6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on current pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUR6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+# 3.2. Clusters based on model-based exposure estimates accrued before age 18 (clusCHLD5)
+The file “LEX_clusCHLD5.csv” has information on estimated pollutant exposures during early childhood. Estimates are available for 5 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:
+
+CHLD5_X7 – a cluster of 7 air pollutants  
+CHLD5_X33 – a large cluster of 33 air pollutants  
+CHLD5_NkF – NkF only  
+CHLD5_NO2 – NO2 only  
+CHLD5_SO2 – SO2 only    
+
+
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCHLD5, collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Primary analysis
+### GEE (with confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCHLD5_mix, fig.width=8, fig.height=7}
+rlts_gee_2 <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = T)
+
+for(j in 1:length(rlts_gee_2[[2]])){
+  rlts_gee_2[[2]][[j]] <- rlts_gee_2[[2]][[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = rlts_gee_2[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee_2[[1]])){
+  rlts_gee_2[[1]][[j]] <- rlts_gee_2[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee_2[[1]])
+```
+
+
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X7 +  \beta_2 X33 + \beta_3 NkF + \beta_4 NO2 + \beta_5 SO2  \\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_9 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCHLD5_mix_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCHLD5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CHLD5_X7")
+p2 <- make_forest_plot_lg(coef2, "CHLD5_X33")
+p3 <- make_forest_plot_lg(coef3, "CHLD5_NkF")
+p4 <- make_forest_plot_lg(coef4, "CHLD5_NO2")
+p5 <- make_forest_plot_lg(coef5, "CHLD5_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusCHLD5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
+## Sensitivity analyses
+### GEE (No confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCHLD5_simple, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = F)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X7 +  \beta_2 X33 + \beta_3 NkF + \beta_4 NO2 + \beta_5 SO2  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCHLD5_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCHLD5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CHLD5_X7")
+p2 <- make_forest_plot_lg(coef2, "CHLD5_X33")
+p3 <- make_forest_plot_lg(coef3, "CHLD5_NkF")
+p4 <- make_forest_plot_lg(coef4, "CHLD5_NO2")
+p5 <- make_forest_plot_lg(coef5, "CHLD5_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-4,4))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on childhood pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusCHLD5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
+
+# 3.3. Clusters based on model-based lifetime exposure estimates (clusCUM6)
+The file “LEX_clus CUM6.csv” has information on estimated cumulative pollutant exposures during the lifecourse. Estimates are available for 6 different prototypes (cluster variables) for a total of 161 subjects and 211 visits. The prototypes are labelled as:  
+
+CUM6_BC_NO2_PM – a cluster of BC, NO2, and PM  
+CUM6_PAH36 – a large cluster of 36 PAHs  
+CUM6_DlP – DlP only  
+CUM6_NkF – NkF only  
+CUM6_RET – retene only  
+CUM6_SO2 – SO2 only   
+ 
+
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusCUM6, collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Primary analysis
+### GEE (with confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCUM6_mix, fig.width=8, fig.height=7}
+rlts_gee_3 <- perform_group_gee(X = var_name_list$cluster_exp$clusCUM6, adjust_cfd = T)
+
+for(j in 1:length(rlts_gee_3[[2]])){
+  rlts_gee_3[[2]][[j]] <- rlts_gee_3[[2]][[j]] + ylim(c(-3.5, 3.5))
+}
+
+grid.arrange(grobs = rlts_gee_3[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee_3[[1]])){
+  rlts_gee_3[[1]][[j]] <- rlts_gee_3[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee_3[[1]])
+```
+
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_NO2\_PM +  \beta_2 PAH36 + \beta_3 DlP  + \beta_4 NkF + \beta_5 RET + \beta_6 SO2  \\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUM6_mix_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUM6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUM6_BC_NO2_PM")
+p2 <- make_forest_plot_lg(coef2, "CUM6_PAH36")
+p3 <- make_forest_plot_lg(coef3, "CUM6_DlP")
+p4 <- make_forest_plot_lg(coef4, "CUM6_NkF")
+p5 <- make_forest_plot_lg(coef5, "CUM6_RET")
+p6 <- make_forest_plot_lg(coef6, "CUM6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-3.5, 3.5))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUM6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+## Sensitivity analyses
+### GEE (No confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusCUM6_simple, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUM6, adjust_cfd = F)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-3.5, 3.5))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_NO2\_PM +  \beta_2 PAH36 + \beta_3 DlP  + \beta_4 NkF + \beta_5 RET + \beta_6 SO2  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusCUM6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUM6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "CUM6_BC_NO2_PM")
+p2 <- make_forest_plot_lg(coef2, "CUM6_PAH36")
+p3 <- make_forest_plot_lg(coef3, "CUM6_DlP")
+p4 <- make_forest_plot_lg(coef4, "CUM6_NkF")
+p5 <- make_forest_plot_lg(coef5, "CUM6_RET")
+p6 <- make_forest_plot_lg(coef6, "CUM6_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-3.5, 3.5))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusCUM6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
+
+# 3.0. All plots together
+```{r fig.width=15, fig.height=8}
+rlts_gee_1[[1]]$CUR6_BC_PAH6$cluster = "BC_PAH6"
+rlts_gee_1[[1]]$CUR6_PAH31$cluster = "PAH31"
+rlts_gee_1[[1]]$CUR6_NkF$cluster = "NkF"
+rlts_gee_1[[1]]$CUR6_PM_RET$cluster = "PM_RET"
+rlts_gee_1[[1]]$CUR6_NO2$cluster = "NO2"
+rlts_gee_1[[1]]$CUR6_SO2$cluster = "SO2"
+
+rlts_gee_1_Df <- rbind(rlts_gee_1[[1]]$CUR6_BC_PAH6, rlts_gee_1[[1]]$CUR6_PAH31, 
+                       rlts_gee_1[[1]]$CUR6_NkF, rlts_gee_1[[1]]$CUR6_PM_RET,
+                       rlts_gee_1[[1]]$CUR6_NO2, rlts_gee_1[[1]]$CUR6_SO2)
+rlts_gee_1_Df$exposure_period = "Current Exposure"
+
+rlts_gee_2[[1]]$CHLD5_X7$cluster = "X7"
+rlts_gee_2[[1]]$CHLD5_X33$cluster = "X33"
+rlts_gee_2[[1]]$CHLD5_NkF$cluster = "NkF"
+rlts_gee_2[[1]]$CHLD5_NO2$cluster = "NO2"
+rlts_gee_2[[1]]$CHLD5_SO2$cluster = "SO2"
+empty_df <- as.data.frame(matrix(NA, nrow = 8, ncol = 6)) 
+empty_df$cluster = " "
+row.names(empty_df) <- row.names(rlts_gee_2[[1]]$CHLD5_X7)
+colnames(empty_df) <- colnames(rlts_gee_2[[1]]$CHLD5_X7)
+
+rlts_gee_2_Df <- rbind(rlts_gee_2[[1]]$CHLD5_X7, rlts_gee_2[[1]]$CHLD5_X33,
+                       rlts_gee_2[[1]]$CHLD5_NkF, rlts_gee_2[[1]]$CHLD5_NO2,
+                       rlts_gee_2[[1]]$CHLD5_SO2, empty_df)
+rlts_gee_2_Df$exposure_period = "Childhood Exposure"
+
+
+rlts_gee_3[[1]]$CUM6_BC_NO2_PM$cluster = "BC_NO2_PM"
+rlts_gee_3[[1]]$CUM6_PAH36$cluster = "PAH36"
+rlts_gee_3[[1]]$CUM6_DlP$cluster = "DlP"
+rlts_gee_3[[1]]$CUM6_NkF$cluster = "NkF"
+rlts_gee_3[[1]]$CUM6_RET$cluster = "RET"
+rlts_gee_3[[1]]$CUM6_SO2$cluster = "SO2"
+
+rlts_gee_3_Df <- rbind(rlts_gee_3[[1]]$CUM6_BC_NO2_PM, rlts_gee_3[[1]]$CUM6_PAH36, 
+                       rlts_gee_3[[1]]$CUM6_DlP, rlts_gee_3[[1]]$CUM6_NkF,
+                       rlts_gee_3[[1]]$CUM6_RET, rlts_gee_3[[1]]$CUM6_SO2)
+rlts_gee_3_Df$exposure_period = "Cumulative Exposure"
+
+rlts_gee_Df <- rbind(rlts_gee_1_Df, rlts_gee_2_Df, rlts_gee_3_Df)
+
+
+rlts_gee_Df$exposure_period = factor(rlts_gee_Df$exposure_period, 
+                                     levels = c("Current Exposure","Childhood Exposure", "Cumulative Exposure"))
+rlts_gee_Df$cluster = factor(rlts_gee_Df$cluster, 
+                                     levels = c("BC_NO2_PM", "PAH36",  "BC_PAH6", "PAH31", "X7", "X33", 
+                                                "NkF",  "SO2","NO2", "RET", " ","DlP", "PM_RET"))
+# rlts_gee_Df$cluster = factor(rlts_gee_Df$cluster, 
+#                                      levels = c("BC_NO2_PM", "PAH36", "DlP", "BC_PAH6", "PAH31", "X7", "X33", 
+#                                                 "PM_RET","RET",  "NkF", "NO2", "SO2", " "))
+rlts_gee_Df$EAAs <- rep(var_name_list$EEAs, 6+6+6)
+```
+
+
+```{r gee_clusters_3periods, fig.width=15, fig.height=8}
+make_forest_plot_lg(rlts_gee_Df, "Expected EAA Change with 1 Unit Increased in each Cluster") + 
+  facet_wrap( ~ exposure_period + cluster, nrow=3) +
+  ylim(-1.7,2.2)
+```
+
+```{r gee_clusters_3periods_sep, fig.width=15, fig.height=8}
+rlts_gee_1_Df$cluster = factor(rlts_gee_1_Df$cluster, 
+                                     levels = c("BC_NO2_PM", "PAH36",  "BC_PAH6", "PAH31", "X7", "X33", 
+                                                "NkF",  "SO2","NO2", "RET", " ","DlP", "PM_RET"))
+rlts_gee_1_Df$EAAs <- rep(var_name_list$EEAs, 6)
+
+rlts_gee_2_Df$cluster = factor(rlts_gee_2_Df$cluster, 
+                                     levels = c("BC_NO2_PM", "PAH36",  "BC_PAH6", "PAH31", "X7", "X33", 
+                                                "NkF",  "SO2","NO2", "RET", " ","DlP", "PM_RET"))
+rlts_gee_2_Df$EAAs <- rep(var_name_list$EEAs, 6)
+
+rlts_gee_3_Df$cluster = factor(rlts_gee_3_Df$cluster, 
+                                     levels = c("BC_NO2_PM", "PAH36",  "BC_PAH6", "PAH31", "X7", "X33", 
+                                                "NkF",  "SO2","NO2", "RET", " ","DlP", "PM_RET"))
+rlts_gee_3_Df$EAAs <- rep(var_name_list$EEAs, 6)
+
+p1 <- make_forest_plot_lg(rlts_gee_1_Df, "") + 
+  facet_grid( ~ cluster) +
+  ylim(-1.7,2.2) +
+  labs(y=" ")
+ggsave(file=sprintf("%s/gee_clusters_current.png",plotFolder), p1, width = 15, height = 3, dpi = 1200) 
+
+p2 <- make_forest_plot_lg(rlts_gee_2_Df, "") + 
+  facet_grid( ~ cluster) +
+  ylim(-1.7,2.2)  +
+  labs(y=" ")
+ggsave(file=sprintf("%s/gee_clusters_childhood.png",plotFolder), p2, width = 15, height = 3, dpi = 1200) 
+
+p3 <- make_forest_plot_lg(rlts_gee_3_Df, "") + 
+  facet_grid( ~ cluster) +
+  ylim(-1.7,2.2)
+ggsave(file=sprintf("%s/gee_clusters_cumulatife.png",plotFolder), p3, width = 15, height = 3, dpi = 1200) 
+```
+
+
+
+# 3.4. Clusters based on pollutant measurements (clusMEAS6)
+The file “LEX_clusMEAS6.csv” has information on measured pollutant exposures during each visit. Estimates are available for 6 different prototypes (cluster variables) for a total of 54 subjects and 54 visits. The prototypes are labelled as:   
+
+MEAS6_BC_ PM_RET – a cluster of BC, PM, and retene  
+MEAS6_X31 – a large cluster of 31 air pollutants  
+MEAS6_X5 – a smaller cluster of 5 air pollutants  
+MEAS6_DlP – DlP only  
+MEAS6_NkF – NkF only  
+MEAS6_ NO2_SO2 – NO2, and SO2    
+
+
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusMEAS6, collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Primary analysis
+### GEE (with confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusMEAS6_mix, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusMEAS6, adjust_cfd = T)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusMEAS6_mix_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusMEAS6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "MEAS6_BC_PM_RET")
+p2 <- make_forest_plot_lg(coef2, "MEAS6_X31")
+p3 <- make_forest_plot_lg(coef3, "MEAS6_X5")
+p4 <- make_forest_plot_lg(coef4, "MEAS6_DlP")
+p5 <- make_forest_plot_lg(coef5, "MEAS6_NkF")
+p6 <- make_forest_plot_lg(coef6, "MEAS6_NO2_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusMEAS6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+## Sensitivity analyses
+### GEE (no confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusMEAS6_simple, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusMEAS6, adjust_cfd = F)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
+  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusMEAS6_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+coef6 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusMEAS6,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+    coef6[i,] <- rlts[7,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+colnames(coef6) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+rownames(coef6) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef6$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "MEAS6_BC_PM_RET")
+p2 <- make_forest_plot_lg(coef2, "MEAS6_X31")
+p3 <- make_forest_plot_lg(coef3, "MEAS6_X5")
+p4 <- make_forest_plot_lg(coef4, "MEAS6_DlP")
+p5 <- make_forest_plot_lg(coef5, "MEAS6_NkF")
+p6 <- make_forest_plot_lg(coef6, "MEAS6_NO2_SO2")
+
+plot_list <- list(p1, p2, p3, p4, p5, p6)
+
+for(j in 1:6){
+  plot_list[[j]] <- plot_list[[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured pollutant exposures"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5, coef6)
+names(coefs_list) <- var_name_list$cluster_exp$clusMEAS6
+cat("The estimated effects:")
+for(j in 1:6){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
+# 3.5. Clusters based on urinary biomarkers (clusURI5)
+The file “LEX_clusURI5.csv” has information on measured urinary biomarkers obtained during each visit. Estimates are available for 5 different prototypes (cluster variables) for a total of 163 subjects and 186 visits. The prototypes are labelled as:  
+
+
+URI5_NAP_1M_2M – a cluster of Naphthalene, 1Methylnaphthalene, and 2Methylnaphthalene  
+URI5_ACE – Acenaphthene only  
+URI5_FLU_PHE – Fluoranthene and Phenanthrene_anth  
+URI5_PYR – Pyrene only  
+URI5_CHR – Baa_Chrysene only  
+ 
+
+
+
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$cluster_exp$clusURI5, collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+
+## Primary analysis
+### GEE (with confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X   \\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusURI5_mix, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusURI5, adjust_cfd = T)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured urinary biomarkers"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+### GEE (Mix, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * NAP\_1M\_2M +  \beta_2 ACE + \beta_3 FLU\_PHE + \beta_4 PYR + \beta_5 CHR  \\
+  & + \beta_6 * county + \beta_7 * BMI + \beta_8 * ses + \beta_9 * edu + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusURI5_mix_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusURI5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = T)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "URI5_NAP_1M_2M")
+p2 <- make_forest_plot_lg(coef2, "URI5_ACE")
+p3 <- make_forest_plot_lg(coef3, "URI5_FLU_PHE")
+p4 <- make_forest_plot_lg(coef4, "URI5_PYR")
+p5 <- make_forest_plot_lg(coef5, "URI5_CHR")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured urinary biomarkers"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusURI5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+## Sensitivity analyses
+### GEE (No confounders)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * X + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations and X is one of the cluster estimates. 
+
+
+Results:
+```{r gee_clusURI5_simple, fig.width=8, fig.height=7}
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusURI5, adjust_cfd = F)
+
+for(j in 1:length(rlts_gee[[2]])){
+  rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = rlts_gee[[2]],  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on cumulative pollutant exposures"), gp=gpar(fontsize=15, fontface = 'bold')))
+```
+```{r}
+cat("The estimated effects:")
+for(j in 1:length(rlts_gee[[1]])){
+  rlts_gee[[1]][[j]] <- rlts_gee[[1]][[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(rlts_gee[[1]])
+```
+
+
+
+### GEE (No confounders, mutual adjust)
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * NAP\_1M\_2M +  \beta_2 ACE + \beta_3 FLU\_PHE + \beta_4 PYR + \beta_5 CHR  \\
+  & + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+
+Results:
+```{r gee_clusURI5_simple_mutual_adjust, fig.width=8, fig.height=7}
+coef1 <- data.frame(matrix(NA, ncol = 6))
+coef2 <- data.frame(matrix(NA, ncol = 6))
+coef3 <- data.frame(matrix(NA, ncol = 6))
+coef4 <- data.frame(matrix(NA, ncol = 6))
+coef5 <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusURI5,
+                                          Y = var_name_list$EEAs[i],
+                                          adjust_cfd = F)
+    coef1[i,] <- rlts[2,]
+    coef2[i,] <- rlts[3,]
+    coef3[i,] <- rlts[4,]
+    coef4[i,] <- rlts[5,]
+    coef5[i,] <- rlts[6,]
+}
+
+colnames(coef1) = colnames(rlts)
+colnames(coef2) = colnames(rlts)
+colnames(coef3) = colnames(rlts)
+colnames(coef4) = colnames(rlts)
+colnames(coef5) = colnames(rlts)
+
+rownames(coef1) = var_name_list$EEAs
+rownames(coef2) = var_name_list$EEAs
+rownames(coef3) = var_name_list$EEAs
+rownames(coef4) = var_name_list$EEAs
+rownames(coef5) = var_name_list$EEAs
+
+
+coef1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+coef5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+p1 <- make_forest_plot_lg(coef1, "URI5_NAP_1M_2M")
+p2 <- make_forest_plot_lg(coef2, "URI5_ACE")
+p3 <- make_forest_plot_lg(coef3, "URI5_FLU_PHE")
+p4 <- make_forest_plot_lg(coef4, "URI5_PYR")
+p5 <- make_forest_plot_lg(coef5, "URI5_CHR")
+
+plot_list <- list(p1, p2, p3, p4, p5)
+
+for(j in 1:5){
+ plot_list[[j]] <- plot_list[[j]] + ylim(c(-6, 6))
+}
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Estimated Effect of each Exposure Prototype \n based on measured urinary biomarkers"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+
+```
+
+```{r}
+coefs_list <- list(coef1, coef2, coef3, coef4, coef5)
+names(coefs_list) <- var_name_list$cluster_exp$clusURI5
+cat("The estimated effects:")
+for(j in 1:5){
+  coefs_list[[j]] <- coefs_list[[j]][, -7] %>%
+    mutate(coefficient = round(coefficient, 4),                        
+             std = round(as.numeric(std), 4),                        
+             ci_lower = round(ci_lower, 4),                        
+             ci_upper = round(ci_upper, 4),                        
+             p_val = round(as.numeric(p_val), 4))
+}
+print(coefs_list)
+```
+
+
+
+# 4.1. Current exposure to 5MC
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$PCH_5MC[1], collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+## Primary analysis
+### GEE (with confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *cur\_5mc\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cur_5MC, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "cur_5mc", 
+                              adjust_cfd = T, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Current exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+plot_df_1 <- plot_df
+```
+
+
+
+
+
+## Sensitivity analysis
+### GEE (no confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *cur\_5mc + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cur_5MC_simple, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "cur_5mc", 
+                              adjust_cfd = F, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Current exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+```
+
+
+
+
+
+# 4.2. Childhood exposure to 5MC
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$PCH_5MC[3], collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+## Primary analysis
+
+### GEE (with confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *childhood\_5mc\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_bir_5MC, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "bir_5mc", 
+                              adjust_cfd = T, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Childhood exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+plot_df_2 <- plot_df
+```
+
+
+
+
+
+## Sensitivity analysis
+### GEE (no confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *childhood\_5mc + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cir_5MC_simple, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "cur_5mc", 
+                              adjust_cfd = F, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Childhood exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+
+```
+
+
+
+# 4.3. Cumulative exposure to 5MC
+## Summary the exposure estimates:
+```{r}
+table1(as.formula(paste(" ~ ", paste(var_name_list$PCH_5MC[2], collapse = " + "), "| curFuel")), 
+       data = df,
+       render.continuous=c(.="Mean (SD)", 
+                           .="Median (IQR)"))
+```
+## Primary analysis
+
+### GEE (with confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *cum\_5mc\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cum_5MC, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "cum_5mc", 
+                              adjust_cfd = T, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Cumulatice exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+
+plot_df_3 <- plot_df
+```
+
+
+
+
+
+## Sensitivity analysis
+### GEE (no confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *cum\_5mc + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cum_5MC_simple, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "cum_5mc", 
+                              adjust_cfd = F, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Current exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+
+```
+
+
+
+# 4.0. All plots together
+```{r gee_5MC_3Periods, fig.width=8, fig.height=3}
+plot_df_1$exposure_time = "Current Exposure"
+plot_df_2$exposure_time = "Childhood Exposure"
+plot_df_3$exposure_time = "Cumulative Exposure"
+plot_df_5mc <- rbind(plot_df_1, plot_df_2, plot_df_3)
+plot_df_5mc$exposure_time = factor(plot_df_5mc$exposure_time, levels = c("Current Exposure","Childhood Exposure", "Cumulative Exposure"))
+make_forest_plot_lg(plot_df_5mc, "Expected EAA Change with 1 Unit Increased in 5MC Exposure") + 
+  facet_wrap(~ exposure_time, scales = 'free_x') 
+```
+
+```{r}
+p1 <- make_forest_plot_lg(plot_df_1, "") + 
+  labs(y = " ")
+ggsave(file=sprintf("%s/5MC_current.png",plotFolder), p1, width = 4.5, height = 3, dpi = 1200) 
+
+p2 <- make_forest_plot_lg(plot_df_2, "") 
+ggsave(file=sprintf("%s/5MC_childhood.png",plotFolder), p2, width = 4.5, height = 3, dpi = 1200) 
+
+p3 <- make_forest_plot_lg(plot_df_3, "") + 
+  labs(y = " ")
+ggsave(file=sprintf("%s/5MC_cumulative.png",plotFolder), p3, width = 4.5, height = 3, dpi = 1200) 
+
+```

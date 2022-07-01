@@ -81,7 +81,7 @@ urinary_exp_label <- c("Benzo(a)anthracene and Chrysene concentration",
 
 
 var_cat <- c("predictedGender", 
-             "curFuel", "brthFuel", "cumFuel", "fueltype", "fuel",
+             "curFuel", "childFuel", "cumFuel", "fueltype", "fuel",
              "curStove",  "stovetype", 
              "education_cat", "county")
 
@@ -94,7 +94,7 @@ var_name_list <- list("ID" = c("SID", "SbjctD", "Visit"),
                       "clocks" = clocks_vars,
                       "EEAs" = EAAs_vars,
                       "confounders" = c("Age", "county", "BMI", "ses", "edu"),
-                      "fuel_exp" = c("curFuel", "brthFuel", "cumFuel"),
+                      "fuel_exp" = c("curFuel", "brthFuel", "childFuel", "curFuel_detail", "cumFuel"),
                       "stove_exp" = "curStove", 
                       "ambient_exp" = ambient_exp_vars,
                       "urinary_exp" = urinary_exp_vars,
