@@ -5,7 +5,7 @@
 
 library(data.table) #install.packages("data.table")
 library(dplyr)
-setwd("/Users/seraphinashi/Desktop/Projects/PAHS/Xuanwei Study coal and DNA metylation study")
+setwd("/Users/seraphinashi/Desktop/PAHS/Xuanwei Study coal and DNA metylation study")
 #---------------------------
 # cpg data
 #---------------------------

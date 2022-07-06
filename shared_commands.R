@@ -88,7 +88,6 @@ var_cat <- c("predictedGender",
 var_cont <- c("age","BMI")
 
 
-
 var_name_list <- list("ID" = c("SID", "SbjctD", "Visit"),
                       "other_info" = c("Group", "Gender"), 
                       "clocks" = clocks_vars,
@@ -96,6 +95,7 @@ var_name_list <- list("ID" = c("SID", "SbjctD", "Visit"),
                       "confounders" = c("Age", "county", "BMI", "ses", "edu"),
                       "fuel_exp" = c("curFuel", "brthFuel", "childFuel", "curFuel_detail", "cumFuel"),
                       "stove_exp" = "curStove", 
+                      "PCH_5MC" = c("cur_5mc", "cum_5mc", "bir_5mc", "cur_5mc_measured"),
                       "ambient_exp" = ambient_exp_vars,
                       "urinary_exp" = urinary_exp_vars,
                       "cluster_exp" = list("clusCUR6" = c("CUR6_BC_PAH6", "CUR6_PAH31", "CUR6_NkF", "CUR6_PM_RET",  "CUR6_NO2", "CUR6_SO2"),

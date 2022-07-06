@@ -10,7 +10,7 @@ output:
 ```{r setup, include = FALSE}
 setwd("/Users/seraphinashi/Desktop/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
 
-plotFolder <- "../images/03_analysis_v3/"
+plotFolder <- "../images/03_analysis_v4/"
 if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
 
 knitr::opts_chunk$set(
@@ -27,67 +27,7 @@ source('shared_commands.R')
 ```
 
 ```{r}
-df <- read.csv("../data/data_cleaned.csv") %>% select(-X)
-```
-
-```{r get_5MC_data}
-library(readxl)
-LEX_5MC_all <- read_excel("../data/new_exposure_files/LEX_5MC_all.xlsx")
-# View(LEX_5MC_all)
-LEX_5MC_all <- LEX_5MC_all %>% rename("SbjctD" = "subject_id", 
-                                      "Visit" = "visit",
-                                      "cur_5mc" = "sum.X5.methylchrysene_conc_final.imputed", 
-                                      "cum_5mc" = "cumlife_5mc",
-                                      "bir_5mc" = "birthyr_5mc",
-                                      "cur_5mc_measured" = "_5_methylchrysene_conc_measured")
-
-
-df <- merge(df, LEX_5MC_all %>% select(SbjctD, cur_5mc, cum_5mc, bir_5mc) %>% unique(), by = "SbjctD", all.x=T)
-df <- merge(df, LEX_5MC_all %>% select(SbjctD, Visit, cur_5mc_measured) %>% unique(), by = c("SbjctD","Visit"), all.x=T)
-
-var_name_list$PCH_5MC <- c("cur_5mc", "cum_5mc", "bir_5mc", "cur_5mc_measured")
-```
-
-```{r standardize_clusters}
-for (var in unname(unlist(var_name_list$cluster_exp))) {
-  sd_var <- sd(df[,var], na.rm = T)
-  df[,var] = df[,var]/sd_var
-}
-```
-
-```{r get_new_fuel_types} 
-new_var_df <- read.delim("../data/new_exposure_files/LEX_ALUCov.txt") 
-new_var_df <- new_var_df %>% select(subject_id, visit, fuel, ltfuel, fuel18yr,fuel_birth)
-new_var_df <- new_var_df %>% 
-  mutate(curFuel = ifelse(fuel==1, "Smoky",
-                           ifelse(fuel==2, "Smokeles",
-                                  ifelse(fuel %in% c(3,4), "Wood_and_or_Plant", 
-                                  "Mix"))),
-         curFuel_detail = ifelse(fuel==1, "Smoky",
-                           ifelse(fuel==2, "Smokeles",
-                                  ifelse(fuel==3, "Wood", 
-                                         ifelse(fuel==4, "Plant", "mix")))),
-         childFuel = ifelse(fuel18yr==1, "Smoky",
-                            ifelse(fuel18yr==2, "Smokeles",
-                                   ifelse(fuel18yr==3, "Wood", 
-                                          "Mix"))),
-         brthFuel = ifelse(fuel_birth==1, "Smoky",
-                            ifelse(fuel_birth==2, "Smokeles",
-                                   ifelse(fuel_birth==3, "Wood", 
-                                          ifelse(fuel_birth==4, "Mix",
-                                                 "Outside of XW/FY")))),
-         cumFuel = ifelse(ltfuel==1, "Smoky",
-                            ifelse(ltfuel==2, "Smokeles", 
-                                   ifelse(ltfuel==3, "Wood", 
-                                          "Mix")))) %>%
-  rename(SbjctD=subject_id, Visit=visit)
-
-df <- df %>% 
-  select(-c(curFuel, brthFuel, cumFuel)) %>%
-  merge(new_var_df %>% select(SbjctD, Visit, curFuel, curFuel_detail), 
-        by = c("SbjctD", "Visit"), all.x = T) %>% 
-  merge(new_var_df %>% select(SbjctD, childFuel, brthFuel, cumFuel) %>% unique(), 
-        by = c("SbjctD"), all.x = T)
+df <- read.csv("../data/data_cleaned_final.csv") %>% select(-X)
 ```
 
 ```{r}
