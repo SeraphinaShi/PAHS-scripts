@@ -791,7 +791,9 @@ preform_gee_brthFuel <- function(Y, adjust_cfd = T) {
   X = "brthFuel"
   tmp <- df[!is.na(df[,X]),]
   
-  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Smokeles","Smoky","Wood", "Mix", "Outside of XW/FY"))
+  tmp <- tmp[tmp$brthFuel != "Outside of XW/FY",]
+  
+  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Smokeles","Smoky","Wood", "Mix"))
   
   form <- ifelse(adjust_cfd, 
                  paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
@@ -824,7 +826,6 @@ coefs1 <- data.frame(matrix(NA, ncol = 6))
 coefs2 <- data.frame(matrix(NA, ncol = 6))
 coefs3 <- data.frame(matrix(NA, ncol = 6))
 coefs4 <- data.frame(matrix(NA, ncol = 6))
-coefs5 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_brthFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
@@ -832,37 +833,32 @@ for(i in 1:length(var_name_list$EEAs)){
     coefs2[i,] <- rlts[2,]
     coefs3[i,] <- rlts[3,]
     coefs4[i,] <- rlts[4,]
-    coefs5[i,] <- rlts[5,]
 }
 
 colnames(coefs1) = colnames(rlts)
 colnames(coefs2) = colnames(rlts)
 colnames(coefs3) = colnames(rlts)
 colnames(coefs4) = colnames(rlts)
-colnames(coefs5) = colnames(rlts)
 
 rownames(coefs1) = var_name_list$EEAs
 rownames(coefs2) = var_name_list$EEAs
 rownames(coefs3) = var_name_list$EEAs
 rownames(coefs4) = var_name_list$EEAs
-rownames(coefs5) = var_name_list$EEAs
 
 
 coefs1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-coefs5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
 p1 <- make_forest_plot_lg(coefs1, "Smokeless (reference)")
 p2 <- make_forest_plot_lg(coefs2, "Smoky")
 p3 <- make_forest_plot_lg(coefs3, "Wood")
 p4 <- make_forest_plot_lg(coefs4, "Mix")
-p5 <- make_forest_plot_lg(coefs5, "Outside of XW/FY")
 
-plot_list <- list(p2, p3, p4,p5)
+plot_list <- list(p2, p3, p4)
 
-for(j in 1:4){
+for(j in 1:3){
   plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 13))
 }
 
@@ -904,16 +900,6 @@ print(coefs4 %>%
                p_val = round(p_val, 6)) %>%
         select(-EAAs))
 ```
-```{r}
-cat("The estimated average EAA differences of Outside of XW/FY to Smokeless fuel yupes:")
-print(coefs5 %>% 
-        mutate(coefficient = round(coefficient, 4),
-               std = round(std, 4),
-               ci_lower = round(ci_lower, 4),
-               ci_upper = round(ci_upper, 4),
-               p_val = round(p_val, 6)) %>%
-        select(-EAAs))
-```
 
 ### GEE (with confounders, Mix ref)
 The numbers of observations with each birth fuel type:
@@ -927,7 +913,9 @@ preform_gee_brthFuel_2 <- function(Y, adjust_cfd = T) {
   X = "brthFuel"
   tmp <- df[!is.na(df[,X]),]
   
-  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Mix","Smoky","Smokeles","Wood", "Outside of XW/FY"))
+  tmp <- tmp[tmp$brthFuel != "Outside of XW/FY",]
+  
+  tmp$brthFuel = factor(tmp$brthFuel, levels = c("Mix","Smoky","Smokeles","Wood"))
   
   form <- ifelse(adjust_cfd, 
                  paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
@@ -960,7 +948,6 @@ coefs1 <- data.frame(matrix(NA, ncol = 6))
 coefs2 <- data.frame(matrix(NA, ncol = 6))
 coefs3 <- data.frame(matrix(NA, ncol = 6))
 coefs4 <- data.frame(matrix(NA, ncol = 6))
-coefs5 <- data.frame(matrix(NA, ncol = 6))
 
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_brthFuel(Y = var_name_list$EEAs[i], adjust_cfd = T)
@@ -968,27 +955,23 @@ for(i in 1:length(var_name_list$EEAs)){
     coefs2[i,] <- rlts[2,]
     coefs3[i,] <- rlts[3,]
     coefs4[i,] <- rlts[4,]
-    coefs5[i,] <- rlts[5,]
 }
 
 colnames(coefs1) = colnames(rlts)
 colnames(coefs2) = colnames(rlts)
 colnames(coefs3) = colnames(rlts)
 colnames(coefs4) = colnames(rlts)
-colnames(coefs5) = colnames(rlts)
 
 rownames(coefs1) = var_name_list$EEAs
 rownames(coefs2) = var_name_list$EEAs
 rownames(coefs3) = var_name_list$EEAs
 rownames(coefs4) = var_name_list$EEAs
-rownames(coefs5) = var_name_list$EEAs
 
 
 coefs1$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs2$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs3$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 coefs4$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
-coefs5$EAAs = factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
 
 coefs_brth <- coefs2
 
@@ -996,11 +979,10 @@ p1 <- make_forest_plot_lg(coefs1, "Mix (reference)")
 p2 <- make_forest_plot_lg(coefs2, "Smoky")
 p3 <- make_forest_plot_lg(coefs3, "Smokeless")
 p4 <- make_forest_plot_lg(coefs4, "Wood")
-p5 <- make_forest_plot_lg(coefs5, "Outside of XW/FY")
 
-plot_list <- list(p2, p3, p4,p5)
+plot_list <- list(p2, p3, p4)
 
-for(j in 1:4){
+for(j in 1:3){
   plot_list[[j]] <- plot_list[[j]] + ylim(c(-10, 13))
 }
 
@@ -1042,23 +1024,13 @@ print(coefs4 %>%
                p_val = round(p_val, 6)) %>%
         select(-EAAs))
 ```
-```{r}
-cat("The estimated average EAA differences of Outside of XW/FY to Smokeless fuel yupes:")
-print(coefs5 %>% 
-        mutate(coefficient = round(coefficient, 4),
-               std = round(std, 4),
-               ci_lower = round(ci_lower, 4),
-               ci_upper = round(ci_upper, 4),
-               p_val = round(p_val, 6)) %>%
-        select(-EAAs))
-```
 
 
 ### GEE (with confounders, Other ref)
 The numbers of observations with each current fuel type:
 ```{r}
 df <- df %>% mutate(brthFuel_1 = ifelse(brthFuel=="Smoky", "Smoky", "Other"))
-table(df$brthFuel_1)
+table(df$brthFuel_1[df$brthFuel != "Outside of XW/FY"])
 ```
 
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each Epigenetic Age Acceleration with the formula: 
@@ -1075,7 +1047,7 @@ Results:
 preform_gee_brthFuel_1 <- function(Y, adjust_cfd = T) {
   X = "brthFuel_1"
   tmp <- df[!is.na(df[,X]),]
-
+  tmp <- tmp[tmp$brthFuel != "Outside of XW/FY", ]
   tmp$brthFuel_1 = factor(tmp$brthFuel_1, levels = c("Other","Smoky"))
   
   form <- ifelse(adjust_cfd, 
