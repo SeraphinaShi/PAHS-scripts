@@ -1,0 +1,166 @@
+---
+title: "PASH Analysis (CPG)"
+author: "Seraphina Shi"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+setwd("/Users/seraphinashi/Desktop/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
+
+plotFolder <- "../images/03_analysis_v5/"
+if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
+
+knitr::opts_chunk$set(
+  cache=FALSE, autodep=FALSE, warning=FALSE, message=FALSE, echo=FALSE,
+  results = 'markup', dev='png', dpi=150, fig.align = "center", fig.path=plotFolder,
+  cache.path=".cache/",
+  duplicate.label="allow"
+)
+
+```
+
+```{r}
+source('shared_commands.R')
+library(table1)
+library(data.table) 
+```
+
+```{r}
+df <- read.csv("../data/data_cleaned_final.csv") %>% select(-X)
+```
+
+
+```{r}
+dat_cpg <- data.table::fread("../../CGR data/methBeta/RothmanAsianMethStudy7.normBeta.txt")
+colnames(dat_cpg)[1] <- "CpGName"
+
+cpg_sites <- c("cg05575921", "cg21566642", "cg01940273", "cg21161138", "cg03329539", "cg03636183", "cg09935388", "cg19859270")
+dat_cpg <- dat_cpg[dat_cpg$CpGName %in% cpg_sites, ] %>% as.data.frame()
+row.names(dat_cpg) <- dat_cpg$CpGName
+dat_cpg <- dat_cpg %>% select(-CpGName) %>% t() %>% as.data.frame()
+
+dat_cpg<- as.data.frame(dat_cpg)
+
+dat_cpg$TargetID <- row.names(dat_cpg)
+
+pheno_old <- read.csv("../../Covariates file/LEX_methylation_phenotype_cov_final.csv")
+pheno_old <- pheno_old %>% 
+  select(TargetID, SID) 
+pheno_old$TargetID <- substring(pheno_old$TargetID, 2)
+
+dat_cpg <- merge(pheno_old, dat_cpg, by="TargetID", all.y = T)
+```
+
+
+```{r}
+df <- merge(df, dat_cpg, by="SID", all.x = T) 
+
+var_name_list$CPGs <- cpg_sites
+
+# sum((!is.na(df$CUR6_PAH31)) & (!is.na(df$cg09935388)))
+# View(df %>% select(var_name_list$ID, var_name_list$cluster_exp$clusCUR6, var_name_list$CPGs))
+```
+
+
+```{r}
+dup_sbjctD <- df$SbjctD[duplicated(df$SbjctD)]
+df_sub1 = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 1) | (! df$SbjctD %in% dup_sbjctD), ]
+df_subs <- list("df_sub1" = df_sub1,
+                "df_sub2" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 2) | (! df$SbjctD %in% dup_sbjctD),])
+```
+
+
+# CPGs reads sumary
+```{r}
+cat(sum((!is.na(df$CUR6_PAH31)) & (!is.na(df$cg09935388))), "observations with both PAH31 and CPG sites data from", length(unique(df$SbjctD[(!is.na(df$CUR6_PAH31)) & (!is.na(df$cg09935388))])), "unique subjects."  )
+```
+
+```{r}
+summary(df %>% select(cpg_sites))
+```
+
+```{r}
+library(geepack)
+
+pah31_vs_cpg <- function(df_tmp, y_var, cpg, adjust_cfd=F) {
+  if(is.na(df_tmp)){
+    df_tmp <- df
+  } 
+    
+  cor_test <- cor.test(df_tmp[,y_var], df_tmp[,cpg])
+  r_pearson <- paste0("r=", round(cor_test$estimate, 2))
+  cor_test_pval <- paste0("p-value=", round(cor_test$p.value, 5))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(y_var, "~", cpg, 
+                        " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(y_var, "~", cpg))
+  form <- as.formula(form)
+  
+  lm_test <- lm(data = df_tmp,
+                formula = form)
+  lm_test_coef <-  paste0("slope=",round(as.numeric(lm_test$coefficients[2]),4))
+  lm_test_pval <- paste0("p-value=", round(summary(lm_test)$coefficients[2,"Pr(>|t|)"], 5))
+  
+  
+  geefit <- geeglm(formula = form, 
+                data = df_tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+  geelm_test_coef <-  paste0("slope=", round(summary(geefit)$coefficients[2,"Estimate"],4))
+  geelm_test_pval <- paste0("p-value=", round(summary(geefit)$coefficients[2,"Pr(>|W|)"], 5))
+
+  ttl <- paste0("[", cpg, "]: \n",
+                "Correlation test:    ", r_pearson, ",             ", cor_test_pval, "\n",
+                "Linear regression: ", lm_test_coef, ", ", lm_test_pval, "\n",
+                "GEE:                     ", geelm_test_coef, ", ", geelm_test_pval)
+  
+  pi <- ggplot(df_tmp, aes_string(y="CUR6_PAH31", x=cpg)) +
+    geom_point() + 
+    labs(x="CPG site reads", y=y_var,
+         title = ttl) +
+    geom_smooth(method = lm, se=T, col = "black") +
+    theme(plot.title = element_text(size=10))
+  return(pi)
+}
+```
+
+# PAH31 ~ CPG site
+## not adjusted for confounders
+```{r plots_pah31_vs_cpg, fig.width=9, fig.height=12}
+plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("CUR6_PAH31", 6, ), cpg_sites, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
+
+## adjusted for confounders
+```{r plots_pah31_vs_cpg_w_cfd, fig.width=9, fig.height=12}
+plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("CUR6_PAH31", 6, ), cpg_sites, rep(T, 6), SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
+
+
+# current 5mc ~ CPG site
+## not adjusted for confounders
+```{r plots_5mc_vs_cpg, fig.width=9, fig.height=12}
+plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("cur_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
+
+
+#  cummulative 5mc ~ CPG site
+## not adjusted for confounders
+```{r plots_cum_5mc_vs_cpg, fig.width=9, fig.height=12}
+plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("cum_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
+
+#  childhood 5mc ~ CPG site
+## not adjusted for confounders
+```{r plots_bir_5mc_vs_cpg, fig.width=9, fig.height=12}
+plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("bir_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
+do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
