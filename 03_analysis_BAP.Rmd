@@ -1,0 +1,345 @@
+---
+title: "PASH Analysis"
+author: "Seraphina Shi"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+setwd("/Users/seraphinashi/Desktop/PAHS/Xuanwei Study coal and DNA metylation study/Seraphina's folder/PAHS-scripts")
+
+plotFolder <- "../images/03_analysis_v5/"
+if(!file.exists(plotFolder)) dir.create(plotFolder,recursive=TRUE)
+
+knitr::opts_chunk$set(
+  cache=FALSE, autodep=FALSE, warning=FALSE, message=FALSE, echo=FALSE,
+  results = 'markup', dev='png', dpi=150, fig.align = "center", fig.path=plotFolder,
+  cache.path=".cache/",
+  duplicate.label="allow"
+)
+
+```
+
+```{r}
+source('shared_commands.R')
+library(table1)
+```
+
+```{r}
+df <- read.csv("../data/data_cleaned_final.csv") %>% select(-X)
+```
+
+```{r}
+dup_sbjctD <- df$SbjctD[duplicated(df$SbjctD)]
+df_sub1 = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 1) | (! df$SbjctD %in% dup_sbjctD), ]
+df_subs <- list("df_sub1" = df_sub1,
+                "df_sub2" = df[(df$SbjctD %in% dup_sbjctD & df$Visit == 2) | (! df$SbjctD %in% dup_sbjctD),])
+```
+
+
+```{r define_functions_1}
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+make_forest_plot <- function(df_plot, exposure){
+  df_plot$sig_level <- as.factor(df_plot$sig_level)
+  p <- ggplot(data=df_plot, aes(x=EAAs, y=coefficient, ymin=ci_lower, ymax=ci_upper)) +
+    geom_point(shape=24, size=2, aes(col = sig_level, fill = sig_level)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = sig_level)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="change in 1 year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=8.6, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=8),
+          axis.title.x = element_text(size=8),
+          axis.text = element_text(size=7)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color) + 
+    guides(fill=guide_legend(title="P-value"))
+
+  return(p)
+}
+
+make_forest_plot_lg <- function(df, exposure){
+  df$sig_level <- as.factor(df$sig_level)
+  p <- ggplot(data=df, aes(x=EAAs, y=coefficient, ymin=ci_lower, ymax=ci_upper)) +
+    geom_point(shape=24, size=2, aes(col = sig_level, fill = sig_level)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = sig_level)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="change in 1 year") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=15, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=10)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color) + 
+    guides(fill= guide_legend(title="P-value"),
+           col = guide_legend(title="P-value") )
+
+  return(p)
+}
+
+
+options(scipen = 999)
+```
+
+```{r define_functions_2}
+library(geepack)
+
+preform_gee <- function(Y, X, log_trans_X = F, adjust_cfd = T, dat = df) {
+  tmp <- dat[!is.na(dat[,X]),]
+  if(log_trans_X) {
+    tmp[,X] <- log(tmp[,X])
+  }
+  
+  if(adjust_cfd){
+    tmp <- tmp %>% select(var_name_list$ID,
+                          var_name_list$EEAs,
+                          var_name_list$confounders,
+                          unname(X)) %>% na.omit()
+  }
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  X_form <- ifelse(adjust_cfd, 
+                 paste0(X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(X))
+
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") # This says all pairs of responses within a subject are equally correlated
+  coef <- summary(geefit)$coefficients[2,1]
+  coef_text <- as.character(round(coef,4))
+  std <- summary(geefit)$coefficients[2,2]
+  std_text <- as.character(round(std,4))
+  p_val <- summary(geefit)$coefficients[2,4]
+  sig_star <- ifelse(p_val<0.001, "***",
+                ifelse(p_val<0.01, "** ",
+                       ifelse(p_val<0.05, "*  ", "   ")))
+  sig_level <- ifelse(p_val <= 0.001, "<= 0.001",
+                ifelse(p_val <= 0.01, "<= 0.01",
+                       ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))
+  # rlt <- paste0(coef_text, paste0(rep(" ", 7-nchar(coef_text)), collapse = ""),
+  #               sig_star,
+  #               "(", std_text, paste0(rep(" ", 6-nchar(std_text)), collapse = ""), ")")
+  ci_l <- coef - 1.96 * std
+  ci_u <- coef + 1.96 * std
+  return(c(coef, std, ci_l, ci_u, p_val, sig_level))
+}
+
+
+perform_group_gee <- function(X, adjust_cfd = T, var_name = NA){
+  plot_df_list <- list()
+  lm_coef_ambient_plot_list <- list()
+  for (j in 1:length(X)) {
+    exp <- X[j]
+    plot_df <- data.frame(matrix(NA, ncol = 6))
+    for(i in 1:length(var_name_list$EEAs)){
+      rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                                X = exp, 
+                                adjust_cfd = adjust_cfd, 
+                                dat=df)
+      plot_df[i,] <- rlts
+    }
+    colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+    rownames(plot_df) <- var_name_list$EEAs
+    plot_df$EAAs <- EAAs_names
+    plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+  
+    plot_df$coefficient = as.numeric(plot_df$coefficient)
+    plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+    plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+  
+    if(sum(is.na(var_name))>0){
+      lm_coef_ambient_plot <- make_forest_plot(plot_df, exp)
+    } else {
+      lm_coef_ambient_plot <- make_forest_plot(plot_df, var_name[j])
+    }
+    
+    plot_df_list[[exp]] <- plot_df
+    lm_coef_ambient_plot_list[[exp]] = lm_coef_ambient_plot
+  }
+  return(list(plot_df_list, lm_coef_ambient_plot_list))
+}
+
+
+
+preform_gee_exposure_prototype <- function(X, Y, adjust_cfd = T, log_trans_X=F) {
+  tmp <- df
+  for(i in 1:length(X)){
+    X_i <- X[i]
+    tmp <- tmp[!is.na(tmp[,X_i]),]
+    if(log_trans_X) {
+      tmp[,X_i] <- log(tmp[,X_i])
+    }
+  }
+  
+  X_form <- paste(X, collapse  = " + ")
+
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X_form, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~", X_form))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") # This says all pairs of responses within a subject are equally correlated
+
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)
+  colnames(coefs) <- c("coefficient", "std", "t_val", "pval")
+
+  coefs <- coefs %>%
+    select(coefficient, std, pval) %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(pval <= 0.001, "<= 0.001",
+                        ifelse(pval <= 0.01, "<= 0.01",
+                               ifelse(pval <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, pval, sig_level)
+
+
+  colnames(coefs) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  
+  return(coefs)
+}
+
+```
+In this file, we presented the results from analyses of the specific exposure, BAP, against computed epigenetic age accelerations (EAA) calculated using DNA methylation data by different methods. We conducted both primary analyses (likelihood ratio tests and generalized estimating equations (GEE), adjusted for confounders) and sensitivity analyses (likelihood ratio tests and/or generalized estimating equations (GEE) limited to certain fuel users, not adjusted for confounders). In addition to what's included in the analysis plan, we also analyzed ambient and urinary exposures. 
+
+
+
+# 1. summarize info 
+The summary info the the 106 first visits:
+```{r}
+summary(df_sub1$bap_air)
+```
+The summary info the the total 129 visits:
+```{r}
+summary(df$bap_air)
+```
+
+```{r fig.width=8, fig.height=4}
+p_list <- list()
+for (i in 1:length(var_name_list$EEAs)) {
+  EAA <- var_name_list$EEAs[i]
+  p_list[[i]] <- ggplot(data=df, aes_string(x = "bap_air", y = EAA)) + 
+    geom_point() +
+    labs(y = clock_names[i])
+}
+grid.arrange(grobs=p_list, nrow=2, 
+             top = textGrob(paste("BAP vs EAA"), 
+                            gp=gpar(fontsize=15, fontface = 'bold'))
+)
+```
+
+
+
+## Primary analysis
+
+### GEE (with confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *bap\_air\\
+  & + \beta_2 * county + \beta_3 * BMI + \beta_4 * ses + \beta_5 * edu  + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_bap_air, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "bap_air", 
+                              adjust_cfd = T, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Ambient exposure to BAP")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+```
+
+
+
+
+
+## Sensitivity analysis
+### GEE (no confounders)
+In the following section, we performed generalized estimating equations (GEE) with equation 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 *bap\_air + \epsilon
+\end{aligned}
+$$
+where $Y$ is one of the epigenetic age accelerations.
+
+Results:
+```{r gee_coef_cum_5MC_simple, fig.width=4, fig.height=3, warning=FALSE, message=FALSE}
+  lm_coef_ambient <- c()
+  plot_df <- data.frame(matrix(NA, ncol = 6))
+  for(i in 1:length(var_name_list$EEAs)){
+    rlts = preform_gee(Y = var_name_list$EEAs[i], 
+                              X = "bap_air", 
+                              adjust_cfd = F, 
+                              dat=df)
+    lm_coef_ambient[i] <- rlts[1]
+    plot_df[i,] <- rlts
+  }
+  colnames(plot_df) <- c("coefficient", "std", "ci_lower", "ci_upper", "p_val", "sig_level")
+  rownames(plot_df) <- var_name_list$EEAs
+  plot_df$EAAs <- EAAs_names
+  plot_df$EAAs <- factor(EAAs_names, levels=rev(c(EAAs_names[EAAs_names != "DNAmTL"], "DNAmTL")))
+
+  plot_df$coefficient = as.numeric(plot_df$coefficient)
+  plot_df$ci_lower = as.numeric(plot_df$ci_lower)
+  plot_df$ci_upper = as.numeric(plot_df$ci_upper)
+
+  lm_coef_ambient_plot <- make_forest_plot(plot_df, "Current exposure to 5MC")
+
+lm_coef_ambient_plot
+
+print(" Result data: ")
+print(plot_df)
+
+```
+
+
+

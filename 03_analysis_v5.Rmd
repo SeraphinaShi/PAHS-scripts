@@ -1836,7 +1836,7 @@ where $Y$ is one of the epigenetic age accelerations and X is one of the cluster
 
 Results:
 ```{r gee_clusCUR6_simple, fig.width=8, fig.height=7}
-rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUR6, adjust_cfd = T)
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUR6, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
   rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
@@ -1884,7 +1884,7 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUR6,
                                           Y = var_name_list$EEAs[i],
-                                          adjust_cfd = T)
+                                          adjust_cfd = F)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2109,7 +2109,7 @@ where $Y$ is one of the epigenetic age accelerations and X is one of the cluster
 
 Results:
 ```{r gee_clusCHLD5_simple, fig.width=8, fig.height=7}
-rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = T)
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCHLD5, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
   rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-4, 4))
@@ -2158,7 +2158,7 @@ coef5 <- data.frame(matrix(NA, ncol = 6))
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCHLD5,
                                           Y = var_name_list$EEAs[i],
-                                          adjust_cfd = T)
+                                          adjust_cfd = F)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2383,7 +2383,7 @@ where $Y$ is one of the epigenetic age accelerations and X is one of the cluster
 
 Results:
 ```{r gee_clusCUM6_simple, fig.width=8, fig.height=7}
-rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUM6, adjust_cfd = T)
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusCUM6, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
   rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-3.5, 3.5))
@@ -2430,7 +2430,7 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusCUM6,
                                           Y = var_name_list$EEAs[i],
-                                          adjust_cfd = T)
+                                          adjust_cfd = F)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -2754,7 +2754,7 @@ print(rlts_gee[[1]])
 
 
 
-### GEE (Mix, mutual adjust)
+### GEE (with confounders, mutual adjust)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
@@ -2856,7 +2856,7 @@ where $Y$ is one of the epigenetic age accelerations and X is one of the cluster
 
 Results:
 ```{r gee_clusMEAS6_simple, fig.width=8, fig.height=7}
-rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusMEAS6, adjust_cfd = T)
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusMEAS6, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
   rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
@@ -2881,12 +2881,12 @@ print(rlts_gee[[1]])
 
 
 
-### GEE (Mix, mutual adjust)
+### GEE (no confounders, mutual adjust)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
   Y = & \beta_0 + \beta_1 * BC\_PAH6 +  \beta_2 PAH31 + \beta_3 NkF + \beta_4 PM\_RET + \beta_5 NO2 + \beta_6 SO2  \\
-  & + \beta_7 * county + \beta_8 * BMI + \beta_9 * ses + \beta_10 * edu + \epsilon
+  + \epsilon
 \end{aligned}
 $$
 where $Y$ is one of the epigenetic age accelerations.
@@ -2904,7 +2904,7 @@ coef6 <- data.frame(matrix(NA, ncol = 6))
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusMEAS6,
                                           Y = var_name_list$EEAs[i],
-                                          adjust_cfd = T)
+                                          adjust_cfd = F)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -3030,7 +3030,7 @@ print(rlts_gee[[1]])
 
 
 
-### GEE (Mix, mutual adjust)
+### GEE (with confounders, mutual adjust)
 In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between each cluster within current pollutant exposures and each Epigenetic Age Acceleration with the formula: 
 $$
 \begin{aligned}
@@ -3126,7 +3126,7 @@ where $Y$ is one of the epigenetic age accelerations and X is one of the cluster
 
 Results:
 ```{r gee_clusURI5_simple, fig.width=8, fig.height=7}
-rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusURI5, adjust_cfd = T)
+rlts_gee <- perform_group_gee(X = var_name_list$cluster_exp$clusURI5, adjust_cfd = F)
 
 for(j in 1:length(rlts_gee[[2]])){
   rlts_gee[[2]][[j]] <- rlts_gee[[2]][[j]] + ylim(c(-6, 6))
@@ -3172,7 +3172,7 @@ coef5 <- data.frame(matrix(NA, ncol = 6))
 for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee_exposure_prototype(X = var_name_list$cluster_exp$clusURI5,
                                           Y = var_name_list$EEAs[i],
-                                          adjust_cfd = T)
+                                          adjust_cfd = F)
     coef1[i,] <- rlts[2,]
     coef2[i,] <- rlts[3,]
     coef3[i,] <- rlts[4,]
@@ -3304,7 +3304,7 @@ Results:
   for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee(Y = var_name_list$EEAs[i], 
                               X = "cur_5mc", 
-                              adjust_cfd = T, 
+                              adjust_cfd = F, 
                               dat=df)
     lm_coef_ambient[i] <- rlts[1]
     plot_df[i,] <- rlts
@@ -3401,7 +3401,7 @@ Results:
   for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee(Y = var_name_list$EEAs[i], 
                               X = "cur_5mc", 
-                              adjust_cfd = T, 
+                              adjust_cfd = F, 
                               dat=df)
     lm_coef_ambient[i] <- rlts[1]
     plot_df[i,] <- rlts
@@ -3498,7 +3498,7 @@ Results:
   for(i in 1:length(var_name_list$EEAs)){
     rlts = preform_gee(Y = var_name_list$EEAs[i], 
                               X = "cum_5mc", 
-                              adjust_cfd = T, 
+                              adjust_cfd = F, 
                               dat=df)
     lm_coef_ambient[i] <- rlts[1]
     plot_df[i,] <- rlts
