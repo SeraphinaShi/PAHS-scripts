@@ -37,7 +37,8 @@ df <- read.csv("../data/data_cleaned_final.csv") %>% select(-X)
 dat_cpg <- data.table::fread("../../CGR data/methBeta/RothmanAsianMethStudy7.normBeta.txt")
 colnames(dat_cpg)[1] <- "CpGName"
 
-cpg_sites <- c("cg05575921", "cg21566642", "cg01940273", "cg21161138", "cg03329539", "cg03636183", "cg09935388", "cg19859270")
+cpg_sites <- c("cg05575921", "cg21566642", "cg01940273", "cg21161138", "cg03329539", "cg03636183", "cg09935388", "cg19859270",
+               "cg09198866", "cg00811020", "cg01411366")
 dat_cpg <- dat_cpg[dat_cpg$CpGName %in% cpg_sites, ] %>% as.data.frame()
 row.names(dat_cpg) <- dat_cpg$CpGName
 dat_cpg <- dat_cpg %>% select(-CpGName) %>% t() %>% as.data.frame()
@@ -131,13 +132,13 @@ pah31_vs_cpg <- function(df_tmp, y_var, cpg, adjust_cfd=F) {
 
 # PAH31 ~ CPG site
 ## not adjusted for confounders
-```{r plots_pah31_vs_cpg, fig.width=9, fig.height=12}
+```{r plots_pah31_vs_cpg, fig.width=9, fig.height=17}
 plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("CUR6_PAH31", 6, ), cpg_sites, SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 ```
 
 ## adjusted for confounders
-```{r plots_pah31_vs_cpg_w_cfd, fig.width=9, fig.height=12}
+```{r plots_pah31_vs_cpg_w_cfd, fig.width=9, fig.height=17}
 plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("CUR6_PAH31", 6, ), cpg_sites, rep(T, 6), SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 ```
@@ -145,7 +146,7 @@ do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 
 # current 5mc ~ CPG site
 ## not adjusted for confounders
-```{r plots_5mc_vs_cpg, fig.width=9, fig.height=12}
+```{r plots_5mc_vs_cpg, fig.width=9, fig.height=17}
 plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("cur_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 ```
@@ -153,14 +154,244 @@ do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 
 #  cummulative 5mc ~ CPG site
 ## not adjusted for confounders
-```{r plots_cum_5mc_vs_cpg, fig.width=9, fig.height=12}
+```{r plots_cum_5mc_vs_cpg, fig.width=9, fig.height=17}
 plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("cum_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
 ```
 
 #  childhood 5mc ~ CPG site
 ## not adjusted for confounders
-```{r plots_bir_5mc_vs_cpg, fig.width=9, fig.height=12}
+```{r plots_bir_5mc_vs_cpg, fig.width=9, fig.height=17}
 plots_pah31_vs_cpg <- mapply(pah31_vs_cpg, rep(NA, 6), rep("bir_5mc", 6, ), cpg_sites, SIMPLIFY = FALSE)
 do.call("grid.arrange", c(plots_pah31_vs_cpg, ncol=2))
+```
+
+
+
+# CPG site ~ Current fuel type 
+```{r}
+preform_gee_curFuel <- function(Y, adjust_cfd = T) {
+  X = "curFuel"
+  tmp <- df[!is.na(df[,X]),]
+  
+  tmp$curFuel = factor(tmp$curFuel, levels = c("Smokeles","Smoky","Wood_and_or_Plant"))
+  
+  form <- ifelse(adjust_cfd, 
+                 paste0(Y," ~ ", X, " + ", paste(var_name_list$confounders[-1], collapse  = " + ")),
+                 paste0(Y,"~",X))
+  form <- as.formula(form)
+  
+  print(paste("Fitting with", nrow(tmp), "observations."))
+  geefit <- geeglm(formula = form, 
+                data = tmp,
+                id = SbjctD,
+                family = gaussian,
+                corstr = "exchangeable") 
+
+  coefs <- as.data.frame(summary(geefit)$coefficients)[c(1,2,3), c(1,2,4)]
+  colnames(coefs) <- c("coefficient", "std", "p_val")
+  rownames(coefs)[rownames(coefs) == "(Intercept)"] = "Smokeless (reference/intercept)"
+  rownames(coefs)[rownames(coefs) == "curFuelSmoky"] = "Smoky"
+  rownames(coefs)[rownames(coefs) == "curFuelWood_and_or_Plant"] = "Wood_and_or_Plant"  
+
+  coefs <- coefs %>%
+    mutate(ci_lower = coefficient - 1.96 * std,
+           ci_upper = coefficient + 1.96 * std,
+           sig_level = ifelse(p_val <= 0.001, "<= 0.001",
+                        ifelse(p_val <= 0.01, "<= 0.01",
+                               ifelse(p_val <= 0.05, "<= 0.05", "> 0.05")))) %>% 
+    select(coefficient, std, ci_lower, ci_upper, p_val, sig_level)
+  return(coefs)
+}
+
+sig_color <- c("<= 0.001" = "#7CAE00", "<= 0.01" = "#00BFC4", "<= 0.05" = "#C77CFF", "> 0.05" = "black")
+
+
+make_forest_plot_lg <- function(df, exposure){
+  df$sig_level <- as.factor(df$sig_level)
+  p <- ggplot(data=df, aes(x=cpg_sites, y=coefficient, ymin=ci_lower, ymax=ci_upper)) +
+    geom_point(shape=24, size=2, aes(col = sig_level, fill = sig_level)) +
+    geom_errorbar(shape=24, width=0.3, aes(col = sig_level)) +
+    geom_hline(yintercept=0, lty=2,color="red") +  # add a dotted line at x=1 after flip
+    # ylim(c(-2,2)) +  # not working
+    coord_flip() +  # flip coordinates (puts labels on y axis)
+    labs(x=expression(log[2]-PFAS))+
+    labs(y="change in reads") +
+    ggtitle(exposure)+
+    theme(plot.title = element_text(size=15, hjust = 0.5),
+          axis.title.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.y = element_text(size=10),
+          axis.title.x = element_text(size=10),
+          axis.text = element_text(size=10)) +
+    scale_color_manual(values = sig_color) +
+    scale_fill_manual(values = sig_color) + 
+    guides(fill= guide_legend(title="P-value"),
+           col = guide_legend(title="P-value") )
+
+  return(p)
+}
+
+```
+
+## GEE (with confounders, Smokeless ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each CpG site reads with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) + \beta_2 * I(\text{Wood_and_or_Plant})  \\
+  & + \beta_3 * county + \beta_4 * BMI + \beta_5 * ses + \beta_6 * edu + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+
+```{r gee_curFuel_mix_org, fig.width=7, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(cpg_sites)){
+    rlts = preform_gee_curFuel(Y = cpg_sites[i], adjust_cfd = T)
+    fueltype_smokeless_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[3,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = cpg_sites
+rownames(fueltype_smokeless_mean) = cpg_sites
+rownames(fueltype_woodplant_mean) = cpg_sites
+
+fueltype_smoky_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+fueltype_smokeless_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+fueltype_woodplant_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+
+coefs_cur <- fueltype_smoky_mean
+
+p1_smokeles <- make_forest_plot_lg(fueltype_smokeless_mean, "Smokeless (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1_woodplant <- make_forest_plot_lg(fueltype_woodplant_mean, "Wood_and_or_Plant")
+
+plot_list <- list(p1_smoky, p1_woodplant)
+
+# for(j in 1:2){
+#   plot_list[[j]] <- plot_list[[j]] + ylim(c(-8, 10))
+# }
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smokeless Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Smokeless fuel yupes:")
+print(fueltype_smoky_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 6)) %>%
+        select(-cpg_sites))
+```
+
+```{r}
+cat("The estimated average EAA differences of Wood and/or Plant fuel type to Smokeless fuel yupes:")
+print(fueltype_woodplant_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 6)) %>%
+        select(-cpg_sites))
+```
+
+
+
+## GEE (without confounders, Smokeless ref)
+The numbers of observations with each current fuel type:
+```{r}
+table(df$curFuel)
+```
+
+In this section, we perform the generalized estimating equations (GEE) to evaluate the associations between current fuel type and each CpG site reads with the formula: 
+$$
+\begin{aligned}
+  Y = & \beta_0 + \beta_1 * I(\text{Smoky}) + \beta_2 * I(\text{Wood_and_or_Plant})  \\
+  & + \epsilon
+\end{aligned}
+$$
+
+
+Results:
+
+```{r gee_curFuel_simp_org, fig.width=7, fig.height=3}
+fueltype_smoky_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_smokeless_mean <- data.frame(matrix(NA, ncol = 6))
+fueltype_woodplant_mean <- data.frame(matrix(NA, ncol = 6))
+
+for(i in 1:length(cpg_sites)){
+    rlts = preform_gee_curFuel(Y = cpg_sites[i], adjust_cfd = F)
+    fueltype_smokeless_mean[i,] <- rlts[1,]
+    fueltype_smoky_mean[i,] <- rlts[2,]
+    fueltype_woodplant_mean[i,] <- rlts[3,]
+}
+
+colnames(fueltype_smoky_mean) = colnames(rlts)
+colnames(fueltype_smokeless_mean) = colnames(rlts)
+colnames(fueltype_woodplant_mean) = colnames(rlts)
+
+rownames(fueltype_smoky_mean) = cpg_sites
+rownames(fueltype_smokeless_mean) = cpg_sites
+rownames(fueltype_woodplant_mean) = cpg_sites
+
+fueltype_smoky_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+fueltype_smokeless_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+fueltype_woodplant_mean$cpg_sites = factor(cpg_sites, levels=cpg_sites)
+
+coefs_cur <- fueltype_smoky_mean
+
+p1_smokeles <- make_forest_plot_lg(fueltype_smokeless_mean, "Smokeless (reference)")
+p1_smoky <- make_forest_plot_lg(fueltype_smoky_mean, "Smoky")
+p1_woodplant <- make_forest_plot_lg(fueltype_woodplant_mean, "Wood_and_or_Plant")
+
+plot_list <- list(p1_smoky, p1_woodplant)
+
+# for(j in 1:2){
+#   plot_list[[j]] <- plot_list[[j]] + ylim(c(-8, 10))
+# }
+
+grid.arrange(grobs = plot_list,  ncol = 2,
+             top = textGrob(paste("Average EAA difference of each current Fuel Type\n compared to Smokeless Coal"), 
+                            gp=gpar(fontsize=15, fontface = 'bold')))
+```
+
+```{r}
+cat("The estimated average EAA differences of Smoky fuel type to Smokeless fuel yupes:")
+print(fueltype_smoky_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 6)) %>%
+        select(-cpg_sites))
+```
+
+```{r}
+cat("The estimated average EAA differences of Wood and/or Plant fuel type to Smokeless fuel yupes:")
+print(fueltype_woodplant_mean %>% 
+        mutate(coefficient = round(coefficient, 4),
+               std = round(std, 4),
+               ci_lower = round(ci_lower, 4),
+               ci_upper = round(ci_upper, 4),
+               p_val = round(p_val, 6)) %>%
+        select(-cpg_sites))
 ```
